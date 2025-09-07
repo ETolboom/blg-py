@@ -1,11 +1,16 @@
+import asyncio
+import io
 import json
 import os
 import sys
+
 from typing import List, Union
 
+import pandas as pd
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import ValidationError
+from pydantic_core import from_json
 
 import algorithms.manager
 from algorithms import Algorithm, AlgorithmFormInput, AlgorithmInput
@@ -46,6 +51,57 @@ async def get_submissions_list() -> List[dict]:
     os.makedirs(submissions_path, exist_ok=True)
     submissions = os.listdir(submissions_path)
     return [{"filename": f, "name": f.replace(".bpmn", "")} for f in submissions if f.endswith(".bpmn")]
+
+
+@app.get("/submissions/export")
+async def export_submission(filename: str) -> Response:
+    submission = os.path.join(base_path, "submissions", filename + ".json")
+    with open(submission, "r", encoding="utf-8") as f:
+        submission_json = f.read()
+
+    try:
+        parsed_rubric: Rubric = Rubric.model_validate(from_json(submission_json, allow_partial=True))
+    except Exception as parse_error:
+        raise HTTPException(status_code=500, detail=str(parse_error))
+
+    return Response(
+        content=parsed_rubric.to_excel(filename),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename.replace('.bpmn', '.xlsx')}"}
+    )
+
+
+@app.get("/submissions/export/all")
+async def export_all_submission() -> Response:
+    submissions_path = os.path.join(base_path, "submissions")
+    submissions = os.listdir(submissions_path)
+    submissions = [file for file in submissions if file.endswith(".json")]
+
+    excel_buffer = io.BytesIO()
+
+    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+        for submission in submissions:
+            submission_path = os.path.join(base_path, "submissions", submission)
+            with open(submission_path, "r", encoding="utf-8") as f:
+                submission_json = f.read()
+
+            try:
+                parsed_rubric: Rubric = Rubric.model_validate(from_json(submission_json, allow_partial=True))
+            except Exception as parse_error:
+                raise HTTPException(status_code=500, detail=str(parse_error))
+
+            parsed_rubric.to_excel_worksheet(writer, submission.replace(".json", ""))
+
+        if 'Sheet' in writer.book.sheetnames:
+            writer.book.remove(writer.book['Sheet'])
+
+    excel_buffer.seek(0)
+
+    return Response(
+        content=excel_buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=submissions.xlsx"}
+    )
 
 
 @app.get("/submissions/{filename}")
@@ -108,6 +164,7 @@ async def update_criteria(algorithm_id: str, inputs: List[AlgorithmInput]):
     global rubric
 
     try:
+        # Prevent any duplicates by removing old instances of the algorithm.
         index = next((i for i, criterion in enumerate(rubric.criteria) if criterion.id == algorithm_id), -1)
         if index != -1:
             del rubric.criteria[index]
@@ -141,13 +198,15 @@ async def update_rubric_description(req: Request):
     if not description:
         return "request body is missing"
 
-    description = description.decode("utf-8")
+    description_lock = asyncio.Lock()
+    async with description_lock:
+        description = description.decode("utf-8")
 
-    global rubric
-    rubric.assignment.description = description
+        global rubric
+        rubric.assignment.description = description
 
-    with open(os.path.join(base_path, "rubric.json"), "wt") as f:
-        f.write(rubric.model_dump_json())
+        with open(os.path.join(base_path, "rubric.json"), "wt") as f:
+            f.write(rubric.model_dump_json())
 
 
 @app.get("/algorithms")
@@ -156,16 +215,50 @@ async def list_algorithms():
     return manager.list_algorithms()
 
 
+@app.patch("/submissions/{filename}")
+async def update_submission(filename: str, criteria: List[RubricCriterion]):
+    submission = os.path.join(base_path, "submissions", filename + ".json")
+    if not os.path.exists(submission):
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    submission_lock = asyncio.Lock()
+
+    async with submission_lock:
+        with open(submission, "r", encoding="utf-8") as f:
+            submission_json = f.read()
+
+        try:
+            parsed_rubric: Rubric = Rubric.model_validate(from_json(submission_json, allow_partial=True))
+        except Exception as parse_error:
+            raise HTTPException(status_code=500, detail=str(parse_error))
+
+        parsed_rubric.criteria = criteria
+
+        with open(submission, "wt", encoding="utf-8") as f:
+            f.write(parsed_rubric.model_dump_json())
+
+
 @app.post("/algorithms/analyze")
-async def analyze_submission(req: Request):
-    model_xml = await req.body()
-    if not model_xml:
-        return "request body is missing"
+async def analyze_submission(filename: str):
+    if filename == "":
+        raise HTTPException(status_code=404, detail="No filename provided")
 
-    manager = algorithms.manager.get_manager(model_xml.decode())
+    submission = os.path.join(base_path, "submissions", filename)
 
-    parsed_algorithms = []
+    if os.path.exists(submission + ".json"):
+        # We already have an analyzed result
+        with open(submission + ".json", "r") as file:
+            return Response(content=file.read(), media_type="application/json")
 
+    if not os.path.exists(submission):
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    with open(submission, "r", encoding="utf-8") as f:
+        model_xml = f.read()
+
+    manager = algorithms.manager.get_manager(model_xml)
+
+    parsed_algorithms: List[RubricCriterion] = []
     for algorithm in rubric.criteria:
         result = manager.get_algorithm(algorithm.id).analyze(inputs=algorithm.inputs)
         parsed_algorithms.append(RubricCriterion(
@@ -180,10 +273,15 @@ async def analyze_submission(req: Request):
             custom_score=None,
         ))
 
-    return Rubric(
+    parsed_submission = Rubric(
         criteria=parsed_algorithms,
-        assignment=rubric.assignment,
+        assignment=None,
     )
+
+    with open(submission + ".json", "wt") as f:
+        f.write(parsed_submission.model_dump_json())
+
+    return parsed_submission
 
 
 @app.post("/algorithms/analyze/all")
