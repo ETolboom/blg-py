@@ -22,6 +22,7 @@ class Synchronization(Algorithm):
             id=self.id,
             name=result.property_name,
             description=self.description,
+            category=self.algorithm_type,
             fulfilled=result.fulfilled,
             problematic_elements=result.problematic_elements,
         )
@@ -48,6 +49,7 @@ class DeadActivity(Algorithm):
             id=self.id,
             name=result.property_name,
             description=self.description,
+            category=self.algorithm_type,
             fulfilled=result.fulfilled,
             problematic_elements=result.problematic_elements,
         )
@@ -74,6 +76,7 @@ class ProperCompletion(Algorithm):
             id=self.id,
             name=result.property_name,
             description=self.description,
+            category=self.algorithm_type,
             fulfilled=result.fulfilled,
             problematic_elements=result.problematic_elements,
         )
@@ -100,6 +103,7 @@ class OptionToComplete(Algorithm):
             id=self.id,
             name=self.name,
             description=self.description,
+            category=self.algorithm_type,
             fulfilled=result.fulfilled,
             problematic_elements=result.problematic_elements,
         )

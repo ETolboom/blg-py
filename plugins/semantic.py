@@ -34,6 +34,7 @@ class AtomicityCheck(Algorithm):
             id=self.id,
             name=self.name,
             description=self.description,
+            category=self.algorithm_type,
             fulfilled=(len(problematic_elements) == 0),
             problematic_elements=problematic_elements,
         )
@@ -78,6 +79,7 @@ class ExactDuplicateTasks(Algorithm):
             id=self.id,
             name=self.name,
             description=self.description,
+            category=self.algorithm_type,
             fulfilled=(len(problematic_elements) == 0),
             problematic_elements=problematic_elements,
         )
@@ -122,6 +124,7 @@ class SemanticDuplicateTasks(Algorithm):
             id=self.id,
             name=self.name,
             description=self.description,
+            category=self.algorithm_type,
             fulfilled=(len(problematic_elements) == 0),
             problematic_elements=problematic_elements,
         )
