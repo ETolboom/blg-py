@@ -35,6 +35,7 @@ class AlgorithmResult(BaseModel):
     """This class describes the format in which the algorithm is presented."""
     id: str = "algorithm_name"
     name: str = "Algorithm X"
+    category: str = "Category"
     description: str = "This algorithm X checks for Y"
     fulfilled: bool | None = False
     confidence: float = 1.0

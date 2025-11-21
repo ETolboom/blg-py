@@ -54,7 +54,7 @@ class AlgorithManager:
     def list_algorithms(self) -> list[dict[str, str | tuple[str, list[AlgorithmFormInput]]]]:
         algorithms = []
         for algorithm in self.algorithms.values():
-            algorithms.append({"id": algorithm.id, "inputs": algorithm.inputs(), "name": algorithm.name})
+            algorithms.append({"id": algorithm.id, "inputs": algorithm.inputs(), "category": algorithm.algorithm_type,  "name": algorithm.name})
 
         return algorithms
 

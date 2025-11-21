@@ -1,1 +1,4 @@
 .idea
+cache/
+example/submissions
+example/rubric.json

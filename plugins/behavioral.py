@@ -42,6 +42,7 @@ class GatewayCheck(Algorithm):
                 id=self.id,
                 name=self.name,
                 description=self.description,
+                category=self.algorithm_type,
                 fulfilled=None,
                 confidence=1.0,
                 problematic_elements=[],
@@ -100,6 +101,7 @@ class GatewayCheck(Algorithm):
                 return AlgorithmResult(
                     id=self.id,
                     name=self.name,
+                    category=self.algorithm_type,
                     description=self.description,
                     fulfilled=True,
                     confidence=max_confidence,
@@ -116,6 +118,7 @@ class GatewayCheck(Algorithm):
             id=self.id,
             name=self.name,
             description=self.description,
+            category=self.algorithm_type,
             fulfilled=False,
             confidence=max_confidence,
             problematic_elements=problematic_elements,
