@@ -2,7 +2,13 @@ from typing import List, ClassVar
 
 from utils.similarity import match_labels
 from utils import get_elements_by_type
-from algorithms import Algorithm, AlgorithmResult, AlgorithmFormInput, AlgorithmInput, AlgorithmKind
+from algorithms import (
+    Algorithm,
+    AlgorithmResult,
+    AlgorithmFormInput,
+    AlgorithmInput,
+    AlgorithmKind,
+)
 
 from bpmn.bpmn import Bpmn
 
@@ -12,7 +18,9 @@ algorithm_category = AlgorithmKind.STRUCTURAL
 class PoolLaneCheck(Algorithm):
     id: ClassVar[str] = "pool_lane_check"
     name: ClassVar[str] = "Pool-Lane Check"
-    description: ClassVar[str] = "Check for specific amount and label of the existing pools and lanes in a model"
+    description: ClassVar[str] = (
+        "Check for specific amount and label of the existing pools and lanes in a model"
+    )
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
     threshold: ClassVar[float] = 0.70
 
@@ -23,12 +31,16 @@ class PoolLaneCheck(Algorithm):
             model = Bpmn(self.model_xml)
 
             for pool in model.pools:
-                inputs.append(AlgorithmInput(
-                    key=pool.name,
-                    # In case you have a pool with a single lane then technically a lane exists that has no name
-                    # hence the type check.
-                    value=[lane.name for lane in pool.lanes if lane.name is not None],
-                ))
+                inputs.append(
+                    AlgorithmInput(
+                        key=pool.name,
+                        # In case you have a pool with a single lane then technically a lane exists that has no name
+                        # hence the type check.
+                        value=[
+                            lane.name for lane in pool.lanes if lane.name is not None
+                        ],
+                    )
+                )
 
             if len(inputs) == 0:
                 raise Exception("No pools found")
@@ -63,15 +75,20 @@ class PoolLaneCheck(Algorithm):
                 inputs=inputs,
             )
 
-
-        pool_matches = match_labels(target=submission_pools, reference=reference_pools, match_threshold=self.threshold)
+        pool_matches = match_labels(
+            target=submission_pools,
+            reference=reference_pools,
+            match_threshold=self.threshold,
+        )
         if len(pool_matches) != len(reference_pools):
             # Add unmatched pool ids to problematic elements list and return early
             matched_pool_ids = []
-            for (submission_idx, best_reference_idx) in pool_matches:
+            for submission_idx, best_reference_idx in pool_matches:
                 matched_pool_ids.append(pools[submission_idx][1])
 
-            missing_matches = set([pool[1] for pool in pools if pool[0] is not None]).difference(matched_pool_ids)
+            missing_matches = set(
+                [pool[1] for pool in pools if pool[0] is not None]
+            ).difference(matched_pool_ids)
 
             # Also add lanes clarity sake
             for pool in model.pools:
@@ -89,8 +106,10 @@ class PoolLaneCheck(Algorithm):
             )
 
         missing_ids = []
-        for (submission_idx, reference_idx) in pool_matches:
-            submission_lane_labels = [task.name for task in model.pools[submission_idx].lanes]
+        for submission_idx, reference_idx in pool_matches:
+            submission_lane_labels = [
+                task.name for task in model.pools[submission_idx].lanes
+            ]
             reference_lane_labels = inputs[reference_idx].value
 
             if len(submission_lane_labels) != len(reference_lane_labels):
@@ -98,16 +117,21 @@ class PoolLaneCheck(Algorithm):
                     missing_ids.append(task.id)
                 continue
 
-            lane_pairs = match_labels(target=submission_lane_labels, reference=reference_lane_labels,
-                                      match_threshold=self.threshold)
+            lane_pairs = match_labels(
+                target=submission_lane_labels,
+                reference=reference_lane_labels,
+                match_threshold=self.threshold,
+            )
             if len(lane_pairs) != len(reference_lane_labels):
                 current_lane = model.pools[submission_idx].lanes
                 # Add unmatched pool ids to problematic elements list and return early
                 matched_lane_ids = []
-                for (submission_lane_idx, _) in lane_pairs:
+                for submission_lane_idx, _ in lane_pairs:
                     matched_lane_ids.append(current_lane[submission_lane_idx].id)
 
-                missing_matches = set([lane.id for lane in current_lane if not None]).difference(matched_lane_ids)
+                missing_matches = set(
+                    [lane.id for lane in current_lane if not None]
+                ).difference(matched_lane_ids)
                 for missed_match in missing_matches:
                     missing_ids.append(missed_match)
 
@@ -128,7 +152,7 @@ class PoolLaneCheck(Algorithm):
                 input_type="key-value",
                 key_label="Pool name",
                 value_label="Lane name(s)",
-                multiple=True
+                multiple=True,
             ),
         ]
 
@@ -149,7 +173,9 @@ class PoolLaneCheck(Algorithm):
 class ResourceCheck(Algorithm):
     id: ClassVar[str] = "resource_check"
     name: ClassVar[str] = "Check for use of a specific resource"
-    description: ClassVar[str] = "Check the model for the use of a specific element such as a data store."
+    description: ClassVar[str] = (
+        "Check the model for the use of a specific element such as a data store."
+    )
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
     def analyze(self, inputs: List[AlgorithmInput] = None) -> AlgorithmResult:
@@ -192,7 +218,7 @@ class ResourceCheck(Algorithm):
                 input_type="string",
                 key_label="Element/Resource name",
                 value_label="Element Name [e.g., dataStoreReference]",
-                multiple=False
+                multiple=False,
             )
         ]
 

@@ -4,6 +4,7 @@ from typing import List, ClassVar
 
 from pydantic import BaseModel, ConfigDict
 
+
 class AlgorithmFormInput(BaseModel):
     """This class describes the form elements required for the input for the algorithm."""
 
@@ -23,12 +24,14 @@ class AlgorithmFormInput(BaseModel):
 
 class AlgorithmInput(BaseModel):
     """This class describes any elements required as input for the algorithm."""
+
     key: str = ""  # Only applicable to kv form type
     value: List[str]
 
 
 class AlgorithmResult(BaseModel):
     """This class describes the format in which the algorithm is presented."""
+
     id: str = "algorithm_name"
     name: str = "Algorithm X"
     category: str = "Category"
@@ -40,13 +43,14 @@ class AlgorithmResult(BaseModel):
 
 
 class AlgorithmKind(str, Enum):
-    SEMANTIC    = "Semantic"
-    STRUCTURAL  = "Structural"
+    SEMANTIC = "Semantic"
+    STRUCTURAL = "Structural"
     BEHAVIORAL = "Behavioural"
 
 
 class Algorithm(BaseModel, ABC):
     """Every algorithm must implement this class."""
+
     model_config = ConfigDict(extra="forbid", strict=True)
 
     # These fields must be defined as class attributes with defaults in subclasses

@@ -36,21 +36,25 @@ class Rubric(BaseModel):
         worksheet = workbook.create_sheet(filename)
 
         # Define styles
-        header_font = Font(bold=True, color='FFFFFF', size=12)
-        header_fill = PatternFill(start_color='2E75B6', end_color='2E75B6', fill_type='solid')
-        criterion_font = Font(bold=True, size=11)
-        criterion_fill = PatternFill(start_color='E8F1FF', end_color='E8F1FF', fill_type='solid')
-        border = Border(
-            left=Side(border_style='thin', color='CCCCCC'),
-            right=Side(border_style='thin', color='CCCCCC'),
-            top=Side(border_style='thin', color='CCCCCC'),
-            bottom=Side(border_style='thin', color='CCCCCC')
+        header_font = Font(bold=True, color="FFFFFF", size=12)
+        header_fill = PatternFill(
+            start_color="2E75B6", end_color="2E75B6", fill_type="solid"
         )
-        wrap_alignment = Alignment(wrap_text=True, vertical='top')
-        center_alignment = Alignment(horizontal='center', vertical='center')
+        criterion_font = Font(bold=True, size=11)
+        criterion_fill = PatternFill(
+            start_color="E8F1FF", end_color="E8F1FF", fill_type="solid"
+        )
+        border = Border(
+            left=Side(border_style="thin", color="CCCCCC"),
+            right=Side(border_style="thin", color="CCCCCC"),
+            top=Side(border_style="thin", color="CCCCCC"),
+            bottom=Side(border_style="thin", color="CCCCCC"),
+        )
+        wrap_alignment = Alignment(wrap_text=True, vertical="top")
+        center_alignment = Alignment(horizontal="center", vertical="center")
 
         # Add headers
-        headers = ['Criterion', 'Description', 'Points']
+        headers = ["Criterion", "Description", "Points"]
         for col, header in enumerate(headers, 1):
             cell = worksheet.cell(row=1, column=col, value=header)
             cell.font = header_font
@@ -89,9 +93,9 @@ class Rubric(BaseModel):
 
         # Set column widths
         column_widths = {
-            'A': 25,  # Criterion
-            'B': 45,  # Description
-            'C': 10  # Points
+            "A": 25,  # Criterion
+            "B": 45,  # Description
+            "C": 10,  # Points
         }
 
         for col_letter, width in column_widths.items():
@@ -99,12 +103,12 @@ class Rubric(BaseModel):
 
     def to_excel(self, filename: str) -> bytes:
         excel_buffer = io.BytesIO()
-        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+        with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
             self.to_excel_worksheet(writer, filename)
 
             # Remove default sheet if it exists
-            if 'Sheet' in writer.book.sheetnames:
-                writer.book.remove(writer.book['Sheet'])
+            if "Sheet" in writer.book.sheetnames:
+                writer.book.remove(writer.book["Sheet"])
 
         excel_buffer.seek(0)
         return excel_buffer.getvalue()

@@ -2,6 +2,7 @@ from xml.etree import ElementTree
 from typing import List
 from bpmn.struct import Pool, PoolElement, parse_lane_set
 
+
 class Bpmn:
     """BPMN is an internal representation of the BPMN XML model."""
 
@@ -37,7 +38,6 @@ class Bpmn:
                     name=element_type,
                     id=child.get("id"),
                     label=child.get("name"),
-
                     # We can always try getting the direction, since .get() returns None if not found.
                     gateway_direction=child.get("gatewayDirection"),
                 )
@@ -50,7 +50,11 @@ class Bpmn:
                     parsed_pool.lanes = parse_lane_set(child)
                     continue
                 elif element_type == "sequenceFlow":
-                    parsed_pool.flows.append(element.to_flow_element(child.get("sourceRef"), child.get("targetRef")))
+                    parsed_pool.flows.append(
+                        element.to_flow_element(
+                            child.get("sourceRef"), child.get("targetRef")
+                        )
+                    )
                     continue
 
                 for nested_child in child:

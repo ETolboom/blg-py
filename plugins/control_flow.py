@@ -6,10 +6,13 @@ from algorithms import Algorithm, AlgorithmResult, AlgorithmFormInput, Algorithm
 
 algorithm_category = AlgorithmKind.STRUCTURAL
 
+
 class Synchronization(Algorithm):
     id: ClassVar[str] = "synchronization"
     name: ClassVar[str] = "Synchronization"
-    description: ClassVar[str] = "The process model properly synchronizes concurrent activities."
+    description: ClassVar[str] = (
+        "The process model properly synchronizes concurrent activities."
+    )
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
     def analyze(self, inputs=None) -> AlgorithmResult:
@@ -33,7 +36,9 @@ class Synchronization(Algorithm):
 class DeadActivity(Algorithm):
     id: ClassVar[str] = "dead_activity"
     name: ClassVar[str] = "Dead Activities"
-    description: ClassVar[str] = "All activities in the process model are reachable and can be executed"
+    description: ClassVar[str] = (
+        "All activities in the process model are reachable and can be executed"
+    )
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
     def analyze(self, inputs=None) -> AlgorithmResult:
@@ -57,7 +62,9 @@ class DeadActivity(Algorithm):
 class ProperCompletion(Algorithm):
     id: ClassVar[str] = "proper_completion"
     name: ClassVar[str] = "Unique End Event Execution"
-    description: ClassVar[str] = "There is a single unambiguous way to reach the final end event."
+    description: ClassVar[str] = (
+        "There is a single unambiguous way to reach the final end event."
+    )
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
     def analyze(self, inputs=None) -> AlgorithmResult:
@@ -81,7 +88,9 @@ class ProperCompletion(Algorithm):
 class OptionToComplete(Algorithm):
     id: ClassVar[str] = "option_to_complete"
     name: ClassVar[str] = "No deadlocks"
-    description: ClassVar[str] = "The process model can definitively reach its end state. E.g., no deadlocks"
+    description: ClassVar[str] = (
+        "The process model can definitively reach its end state. E.g., no deadlocks"
+    )
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
     def analyze(self, inputs=None) -> AlgorithmResult:

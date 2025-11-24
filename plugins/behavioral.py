@@ -1,22 +1,34 @@
-from typing import ClassVar, List, Tuple, Optional, overload, Any
 from dataclasses import dataclass
+from typing import ClassVar, List, Optional, Tuple
 
 import numpy as np
 import torch
 from scipy.optimize import linear_sum_assignment
 
-from algorithms import Algorithm, AlgorithmInput, AlgorithmResult, AlgorithmFormInput, AlgorithmKind
+from algorithms import (
+    Algorithm,
+    AlgorithmFormInput,
+    AlgorithmInput,
+    AlgorithmKind,
+    AlgorithmResult,
+)
 from bpmn.bpmn import Bpmn
 from utils.similarity import create_similarity_matrix
 
 algorithm_category = AlgorithmKind.BEHAVIORAL
 
+
 class GatewayCheck(Algorithm):
     id: ClassVar[str] = "gateway_check"
     name: ClassVar[str] = "Gateway Check"
-    description: ClassVar[str] = "Check if a gateway is mapped implemented according to the algorithm input"
+    description: ClassVar[str] = (
+        "Check if a gateway is mapped implemented according to the algorithm input"
+    )
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
-    supported_gateway_types: ClassVar[List[str]] = ['exclusiveGateway', 'parallelGateway']
+    supported_gateway_types: ClassVar[List[str]] = [
+        "exclusiveGateway",
+        "parallelGateway",
+    ]
     threshold: ClassVar[float] = 0.8
 
     def analyze(self, inputs: List[AlgorithmInput] = None) -> AlgorithmResult:
@@ -31,7 +43,9 @@ class GatewayCheck(Algorithm):
 
         all_gateways_in_model = find_gateways_with_branches(model)
 
-        candidate_gateways = [gw for gw in all_gateways_in_model if gw.gateway_type == gateway_type]
+        candidate_gateways = [
+            gw for gw in all_gateways_in_model if gw.gateway_type == gateway_type
+        ]
 
         if not candidate_gateways:
             # raise Exception(f"invalid input: no gateways found for type \"{gateway_type}\"")
@@ -43,10 +57,12 @@ class GatewayCheck(Algorithm):
                 fulfilled=None,
                 confidence=1.0,
                 problematic_elements=[],
-                inputs=inputs
+                inputs=inputs,
             )
 
-        elements_by_id = {element.id: element for pool in model.pools for element in pool.elements}
+        elements_by_id = {
+            element.id: element for pool in model.pools for element in pool.elements
+        }
 
         max_confidence = 0.0
         best_effort = None
@@ -57,7 +73,10 @@ class GatewayCheck(Algorithm):
             for branch in gateway.branches:
                 branch_labels = []
                 for _, element_id in branch:
-                    if element_id in elements_by_id and elements_by_id[element_id].label:
+                    if (
+                        element_id in elements_by_id
+                        and elements_by_id[element_id].label
+                    ):
                         branch_labels.append(elements_by_id[element_id].label)
                 actual_branches.append(branch_labels)
 
@@ -73,15 +92,25 @@ class GatewayCheck(Algorithm):
                 for i, actual_labels in enumerate(actual_branches):
                     for j, reference_labels in enumerate(reference_branches):
                         if not actual_labels or not reference_labels:
-                            branch_sim_matrix[i, j] = 1.0 if not actual_labels and not reference_labels else 0.0
+                            branch_sim_matrix[i, j] = (
+                                1.0
+                                if not actual_labels and not reference_labels
+                                else 0.0
+                            )
                             continue
 
                         # Compute semantic similarity between task labels.
-                        similarity_matrix = create_similarity_matrix(actual_labels, reference_labels)
+                        similarity_matrix = create_similarity_matrix(
+                            actual_labels, reference_labels
+                        )
 
                         # Calculate a symmetric similarity score for the branches.
-                        score1 = torch.mean(torch.max(similarity_matrix, dim=1).values).item()
-                        score2 = torch.mean(torch.max(similarity_matrix, dim=0).values).item()
+                        score1 = torch.mean(
+                            torch.max(similarity_matrix, dim=1).values
+                        ).item()
+                        score2 = torch.mean(
+                            torch.max(similarity_matrix, dim=0).values
+                        ).item()
                         branch_sim_matrix[i, j] = (score1 + score2) / 2.0
 
                 # Find the optimal assignment to maximize total similarity.
@@ -103,7 +132,7 @@ class GatewayCheck(Algorithm):
                     fulfilled=True,
                     confidence=max_confidence,
                     problematic_elements=[],
-                    inputs=inputs
+                    inputs=inputs,
                 )
 
         problematic_elements = []
@@ -119,7 +148,7 @@ class GatewayCheck(Algorithm):
             fulfilled=False,
             confidence=max_confidence,
             problematic_elements=problematic_elements,
-            inputs=inputs
+            inputs=inputs,
         )
 
     def inputs(self) -> List[AlgorithmFormInput]:
@@ -129,7 +158,7 @@ class GatewayCheck(Algorithm):
                 input_type="key-value",
                 key_label="Gateway Type [exclusiveGateway, parallelGateway]",
                 value_label="Task Labels [Label1,Label2,Label3]",
-                multiple=True
+                multiple=True,
             )
         ]
 
@@ -163,9 +192,10 @@ def find_gateways_with_branches(bpmn: Bpmn) -> List[Gateway]:
             flows_by_target[flow.target].append(flow.source)
 
         for element in pool.elements:
-            if (element.name in ["exclusiveGateway", "parallelGateway"] and
-                    element.gateway_direction == "Diverging"):
-
+            if (
+                element.name in ["exclusiveGateway", "parallelGateway"]
+                and element.gateway_direction == "Diverging"
+            ):
                 element_before = None
                 if element.id in flows_by_target and flows_by_target[element.id]:
                     before_elem = elements_by_id.get(flows_by_target[element.id][0])
@@ -186,24 +216,32 @@ def find_gateways_with_branches(bpmn: Bpmn) -> List[Gateway]:
                         if convergence_point and not converging_gateway_id:
                             converging_gateway_id = convergence_point
 
-                if converging_gateway_id and converging_gateway_id in flows_by_source and flows_by_source[
-                    converging_gateway_id]:
-                    after_elem = elements_by_id.get(flows_by_source[converging_gateway_id][0])
+                if (
+                    converging_gateway_id
+                    and converging_gateway_id in flows_by_source
+                    and flows_by_source[converging_gateway_id]
+                ):
+                    after_elem = elements_by_id.get(
+                        flows_by_source[converging_gateway_id][0]
+                    )
                     if after_elem:
                         element_after = (after_elem.label, after_elem.id)
 
                 if element_before and branches:
-                    gateways.append(Gateway(
-                        gateway_type=element.name,
-                        element_before=element_before,
-                        element_after=element_after or ("", ""),
-                        branches=branches
-                    ))
+                    gateways.append(
+                        Gateway(
+                            gateway_type=element.name,
+                            element_before=element_before,
+                            element_after=element_after or ("", ""),
+                            branches=branches,
+                        )
+                    )
     return gateways
 
 
-def trace_branch(start_id: str, elements_by_id: dict, flows_by_source: dict) -> Tuple[
-    List[Tuple[str, str]], Optional[str]]:
+def trace_branch(
+    start_id: str, elements_by_id: dict, flows_by_source: dict
+) -> Tuple[List[Tuple[str, str]], Optional[str]]:
     branch = []
     current_id = start_id
     visited = set()
@@ -215,8 +253,10 @@ def trace_branch(start_id: str, elements_by_id: dict, flows_by_source: dict) -> 
         if not current_element:
             break
 
-        if (current_element.name in ["exclusiveGateway", "parallelGateway"] and
-                current_element.gateway_direction == "Converging"):
+        if (
+            current_element.name in ["exclusiveGateway", "parallelGateway"]
+            and current_element.gateway_direction == "Converging"
+        ):
             return branch, current_id
 
         # Add the element's label and ID to the branch

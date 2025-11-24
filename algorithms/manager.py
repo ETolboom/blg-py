@@ -22,7 +22,7 @@ def load_algorithms() -> None:
         for file in files:
             if file.endswith(".py"):
                 file_path = Path(root) / file
-                module_name = str(file_path.with_suffix('')).replace(os.sep, '.')
+                module_name = str(file_path.with_suffix("")).replace(os.sep, ".")
 
                 try:
                     module = importlib.import_module(module_name)
@@ -38,16 +38,22 @@ def load_algorithms() -> None:
                             continue
 
                         # Will raise a validation error if the class is not valid
-                        cls.model_validate({
-                            "model_xml": "<xml/>",
-                        })
+                        cls.model_validate(
+                            {
+                                "model_xml": "<xml/>",
+                            }
+                        )
 
                         algorithm_classes.append(cls)
                         algorithm_names.append(cls.id)
                 except TypeError as e:
-                    raise Exception(f"{module_name} failed to import due to a type error: {e}")
+                    raise Exception(
+                        f"{module_name} failed to import due to a type error: {e}"
+                    )
                 except ValidationError as e:
-                    raise Exception(f"{module_name} failed to import due to a validation error: {e}")
+                    raise Exception(
+                        f"{module_name} failed to import due to a validation error: {e}"
+                    )
                 except ImportError as e:
                     raise Exception(f"{module_name} failed to import: {e}")
                 except Exception as e:
@@ -68,10 +74,19 @@ class AlgorithManager:
             algorithm = algorithm_class(model_xml=model_xml)
             self.algorithms[algorithm.id] = algorithm
 
-    def list_algorithms(self) -> list[dict[str, str | tuple[str, list[AlgorithmFormInput]]]]:
+    def list_algorithms(
+        self,
+    ) -> list[dict[str, str | tuple[str, list[AlgorithmFormInput]]]]:
         algorithms = []
         for algorithm in self.algorithms.values():
-            algorithms.append({"id": algorithm.id, "inputs": algorithm.inputs(), "category": algorithm.algorithm_kind, "name": algorithm.name})
+            algorithms.append(
+                {
+                    "id": algorithm.id,
+                    "inputs": algorithm.inputs(),
+                    "category": algorithm.algorithm_kind,
+                    "name": algorithm.name,
+                }
+            )
 
         return algorithms
 

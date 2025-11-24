@@ -13,14 +13,12 @@ from pydantic import ValidationError
 from pydantic_core import from_json
 
 import algorithms.manager
-from algorithms import Algorithm, AlgorithmFormInput, AlgorithmInput
+from algorithms import Algorithm, AlgorithmInput
 from rubric import Rubric, OnboardingRubric, RubricCriterion
 
 app = FastAPI()
 
-origins = [
-    "http://localhost:5173"
-]
+origins = ["http://localhost:5173"]
 
 base_path = ""
 
@@ -50,7 +48,11 @@ async def get_submissions_list() -> List[dict]:
     submissions_path = os.path.join(base_path, "submissions")
     os.makedirs(submissions_path, exist_ok=True)
     submissions = os.listdir(submissions_path)
-    return [{"filename": f, "name": f.replace(".bpmn", "")} for f in submissions if f.endswith(".bpmn")]
+    return [
+        {"filename": f, "name": f.replace(".bpmn", "")}
+        for f in submissions
+        if f.endswith(".bpmn")
+    ]
 
 
 @app.get("/submissions/export")
@@ -60,14 +62,18 @@ async def export_submission(filename: str) -> Response:
         submission_json = f.read()
 
     try:
-        parsed_rubric: Rubric = Rubric.model_validate(from_json(submission_json, allow_partial=True))
+        parsed_rubric: Rubric = Rubric.model_validate(
+            from_json(submission_json, allow_partial=True)
+        )
     except Exception as parse_error:
         raise HTTPException(status_code=500, detail=str(parse_error))
 
     return Response(
         content=parsed_rubric.to_excel(filename),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename.replace('.bpmn', '.xlsx')}"}
+        headers={
+            "Content-Disposition": f"attachment; filename={filename.replace('.bpmn', '.xlsx')}"
+        },
     )
 
 
@@ -79,35 +85,39 @@ async def export_all_submission() -> Response:
 
     excel_buffer = io.BytesIO()
 
-    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+    with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
         for submission in submissions:
             submission_path = os.path.join(base_path, "submissions", submission)
             with open(submission_path, "r", encoding="utf-8") as f:
                 submission_json = f.read()
 
             try:
-                parsed_rubric: Rubric = Rubric.model_validate(from_json(submission_json, allow_partial=True))
+                parsed_rubric: Rubric = Rubric.model_validate(
+                    from_json(submission_json, allow_partial=True)
+                )
             except Exception as parse_error:
                 raise HTTPException(status_code=500, detail=str(parse_error))
 
             parsed_rubric.to_excel_worksheet(writer, submission.replace(".json", ""))
 
-        if 'Sheet' in writer.book.sheetnames:
-            writer.book.remove(writer.book['Sheet'])
+        if "Sheet" in writer.book.sheetnames:
+            writer.book.remove(writer.book["Sheet"])
 
     excel_buffer.seek(0)
 
     return Response(
         content=excel_buffer.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=submissions.xlsx"}
+        headers={"Content-Disposition": "attachment; filename=submissions.xlsx"},
     )
 
 
 @app.get("/submissions/{filename}")
 async def get_submission(filename: str) -> Response:
     if filename == "Reference":
-        return Response(content=rubric.assignment.reference_xml, media_type="application/xml")
+        return Response(
+            content=rubric.assignment.reference_xml, media_type="application/xml"
+        )
 
     submissions_path = os.path.join(base_path, "submissions", filename)
     with open(submissions_path, "r") as model:
@@ -132,18 +142,20 @@ async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric):
             # we assume that inputs are [] so the algorithm tries to
             # do a first pass / a best effort analysis.
             result = manager.get_algorithm(algorithm).analyze()
-            parsed_algorithms.append(RubricCriterion(
-                id=result.id,
-                name=result.name,
-                description=result.description,
-                category=result.category,
-                fulfilled=result.fulfilled,
-                inputs=result.inputs,
-                confidence=result.confidence,
-                problematic_elements=result.problematic_elements,
-                default_points=1.0,
-                custom_score=None,
-            ))
+            parsed_algorithms.append(
+                RubricCriterion(
+                    id=result.id,
+                    name=result.name,
+                    description=result.description,
+                    category=result.category,
+                    fulfilled=result.fulfilled,
+                    inputs=result.inputs,
+                    confidence=result.confidence,
+                    problematic_elements=result.problematic_elements,
+                    default_points=1.0,
+                    custom_score=None,
+                )
+            )
 
     new_rubric = Rubric(
         criteria=parsed_algorithms,
@@ -166,24 +178,33 @@ async def update_criteria(algorithm_id: str, inputs: List[AlgorithmInput]):
 
     try:
         # Prevent any duplicates by removing old instances of the algorithm.
-        index = next((i for i, criterion in enumerate(rubric.criteria) if criterion.id == algorithm_id), -1)
+        index = next(
+            (
+                i
+                for i, criterion in enumerate(rubric.criteria)
+                if criterion.id == algorithm_id
+            ),
+            -1,
+        )
         if index != -1:
             del rubric.criteria[index]
 
         manager = algorithms.manager.get_manager(rubric.assignment.reference_xml)
         result = manager.get_algorithm(algorithm_id).analyze(inputs=inputs)
-        rubric.criteria.append(RubricCriterion(
-            id=algorithm_id,
-            name=result.name,
-            description=result.description,
-            category=result.category,
-            fulfilled=result.fulfilled,
-            inputs=result.inputs,
-            confidence=result.confidence,
-            problematic_elements=result.problematic_elements,
-            default_points=1.0,
-            custom_score=None,
-        ))
+        rubric.criteria.append(
+            RubricCriterion(
+                id=algorithm_id,
+                name=result.name,
+                description=result.description,
+                category=result.category,
+                fulfilled=result.fulfilled,
+                inputs=result.inputs,
+                confidence=result.confidence,
+                problematic_elements=result.problematic_elements,
+                default_points=1.0,
+                custom_score=None,
+            )
+        )
 
         # Write new rubric to file so it persists
         with open(os.path.join(base_path, "rubric.json"), "wt") as f:
@@ -191,7 +212,9 @@ async def update_criteria(algorithm_id: str, inputs: List[AlgorithmInput]):
 
         return rubric
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update criteria: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update criteria: {str(e)}"
+        )
 
 
 @app.post("/rubric/description")
@@ -230,7 +253,9 @@ async def update_submission(filename: str, criteria: List[RubricCriterion]):
             submission_json = f.read()
 
         try:
-            parsed_rubric: Rubric = Rubric.model_validate(from_json(submission_json, allow_partial=True))
+            parsed_rubric: Rubric = Rubric.model_validate(
+                from_json(submission_json, allow_partial=True)
+            )
         except Exception as parse_error:
             raise HTTPException(status_code=500, detail=str(parse_error))
 
@@ -263,18 +288,20 @@ async def analyze_submission(filename: str):
     parsed_algorithms: List[RubricCriterion] = []
     for algorithm in rubric.criteria:
         result = manager.get_algorithm(algorithm.id).analyze(inputs=algorithm.inputs)
-        parsed_algorithms.append(RubricCriterion(
-            id=result.id,
-            name=result.name,
-            description=result.description,
-            category=result.category,
-            fulfilled=result.fulfilled,
-            inputs=result.inputs,
-            confidence=result.confidence,
-            problematic_elements=result.problematic_elements,
-            default_points=1.0,
-            custom_score=None,
-        ))
+        parsed_algorithms.append(
+            RubricCriterion(
+                id=result.id,
+                name=result.name,
+                description=result.description,
+                category=result.category,
+                fulfilled=result.fulfilled,
+                inputs=result.inputs,
+                confidence=result.confidence,
+                problematic_elements=result.problematic_elements,
+                default_points=1.0,
+                custom_score=None,
+            )
+        )
 
     parsed_submission = Rubric(
         criteria=parsed_algorithms,
@@ -321,7 +348,9 @@ async def analyze_all(req: Request):
         data: NodeData
         children: Union[List, None] = None
 
-        def __init__(self, key: str, data: NodeData, children: Union[List, None] = None):
+        def __init__(
+            self, key: str, data: NodeData, children: Union[List, None] = None
+        ):
             self.key = key
             self.data = data
             self.children = children
@@ -332,24 +361,28 @@ async def analyze_all(req: Request):
     for category in applicable_algorithms:
         inner_nodes = []
         for inner_node_idx, algorithm in enumerate(applicable_algorithms[category]):
-            inner_nodes.append(Node(
-                key=str(node_idx) + "-" + str(inner_node_idx),
-                data=NodeData(
-                    alg_id=algorithm.id,
-                    name=algorithm.name,
-                    description=algorithm.description,
-                ),
-            ))
+            inner_nodes.append(
+                Node(
+                    key=str(node_idx) + "-" + str(inner_node_idx),
+                    data=NodeData(
+                        alg_id=algorithm.id,
+                        name=algorithm.name,
+                        description=algorithm.description,
+                    ),
+                )
+            )
 
-        nodes.append(Node(
-            key=str(node_idx),
-            data=NodeData(
-                alg_id="",
-                name=category,
-                description="",
-            ),
-            children=inner_nodes,
-        ))
+        nodes.append(
+            Node(
+                key=str(node_idx),
+                data=NodeData(
+                    alg_id="",
+                    name=category,
+                    description="",
+                ),
+                children=inner_nodes,
+            )
+        )
 
         node_idx += 1
 

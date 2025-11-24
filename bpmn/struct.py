@@ -5,7 +5,7 @@ from xml.etree.ElementTree import Element
 
 @dataclass
 class FlowElement:
-    """ FlowElement represents an edge between two nodes within a pool"""
+    """FlowElement represents an edge between two nodes within a pool"""
 
     # Id is the unique identifier for each FlowElement
     id: str
@@ -40,7 +40,7 @@ class PoolElement:
     outgoing: List[str] = field(default_factory=list)
 
     # Children stores all the PoolElement instances nested within the current PoolElement
-    children: List['PoolElement'] = field(default_factory=list)
+    children: List["PoolElement"] = field(default_factory=list)
 
     # GatewayDirection indicates the direction in which the gateway is going.
     # This can either be "Diverging" or "Converging".

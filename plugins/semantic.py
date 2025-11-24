@@ -1,10 +1,11 @@
 from collections import defaultdict
+from typing import ClassVar, List
 
 import spacy
 import torch
 from fuzzywuzzy import fuzz
 
-from algorithms import *
+from algorithms import Algorithm, AlgorithmFormInput, AlgorithmKind, AlgorithmResult
 from utils import get_elements_by_type
 from utils.similarity import create_similarity_matrix
 
@@ -21,7 +22,7 @@ class AtomicityCheck(Algorithm):
     def analyze(self, inputs=None) -> AlgorithmResult:
         tasks: List[(str, str)] = get_elements_by_type(self.model_xml, "task")
         problematic_elements = []
-        for (label, element_id) in tasks:
+        for label, element_id in tasks:
             single_action = check_single_action(label)
             atomicity = atomicity_score(label)
             if not (single_action or atomicity >= self.threshold):
@@ -46,7 +47,9 @@ class AtomicityCheck(Algorithm):
 class ExactDuplicateTasks(Algorithm):
     id: ClassVar[str] = "exact_duplicate_tasks"
     name: ClassVar[str] = "Exact Duplicate Tasks"
-    description: ClassVar[str] = "Check the model for any duplicate tasks based on fuzzy matching"
+    description: ClassVar[str] = (
+        "Check the model for any duplicate tasks based on fuzzy matching"
+    )
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
     threshold: ClassVar[float] = 0.90
 
@@ -87,7 +90,9 @@ class ExactDuplicateTasks(Algorithm):
 class SemanticDuplicateTasks(Algorithm):
     id: ClassVar[str] = "semantic_duplicate_tasks"
     name: ClassVar[str] = "Semantically Duplicate Tasks"
-    description: ClassVar[str] = "Check the model for any duplicate tasks based on semantic matching"
+    description: ClassVar[str] = (
+        "Check the model for any duplicate tasks based on semantic matching"
+    )
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
     threshold: ClassVar[float] = 0.75
 
@@ -138,7 +143,7 @@ def check_single_action(label):
 
 def atomicity_score(label):
     words = label.split()
-    conjunction_words = ['and', 'or', 'then', 'after', 'also']
+    conjunction_words = ["and", "or", "then", "after", "also"]
 
     penalties = 0
     penalties += len(words) * 0.1
@@ -202,7 +207,7 @@ def find_fuzzy_duplicates(tuples_list, threshold):
         processed.add(i)
 
         # Compare with remaining tuples
-        for j, other_tuple in enumerate(tuples_list[i + 1:], i + 1):
+        for j, other_tuple in enumerate(tuples_list[i + 1 :], i + 1):
             if j in processed:
                 continue
 
