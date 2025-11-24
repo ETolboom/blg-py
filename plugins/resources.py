@@ -1,23 +1,20 @@
-from typing import List
+from typing import List, ClassVar
 
 from utils.similarity import match_labels
 from utils import get_elements_by_type
-from algorithms import Algorithm, AlgorithmResult, AlgorithmFormInput, AlgorithmInput
+from algorithms import Algorithm, AlgorithmResult, AlgorithmFormInput, AlgorithmInput, AlgorithmKind
 
 from bpmn.bpmn import Bpmn
 
-algorithm_category = "Resources"
+algorithm_category = AlgorithmKind.STRUCTURAL
 
 
 class PoolLaneCheck(Algorithm):
-    id = "pool_lane_check"
-    name = "Pool-Lane Check"
-    description = "Check for specific amount and label of the existing pools and lanes in a model"
-    algorithm_type = algorithm_category
-    threshold = 0.70
-
-    def __init__(self, model_xml: str):
-        super().__init__(model_xml)
+    id: ClassVar[str] = "pool_lane_check"
+    name: ClassVar[str] = "Pool-Lane Check"
+    description: ClassVar[str] = "Check for specific amount and label of the existing pools and lanes in a model"
+    algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
+    threshold: ClassVar[float] = 0.70
 
     def analyze(self, inputs: List[AlgorithmInput] = None) -> AlgorithmResult:
         if inputs is None:
@@ -150,13 +147,10 @@ class PoolLaneCheck(Algorithm):
 
 
 class ResourceCheck(Algorithm):
-    id = "resource_check"
-    name = "Check for use of a specific resource"
-    description = "Check the model for the use of a specific element such as a data store."
-    algorithm_type = algorithm_category
-
-    def __init__(self, model_xml: str):
-        super().__init__(model_xml)
+    id: ClassVar[str] = "resource_check"
+    name: ClassVar[str] = "Check for use of a specific resource"
+    description: ClassVar[str] = "Check the model for the use of a specific element such as a data store."
+    algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
     def analyze(self, inputs: List[AlgorithmInput] = None) -> AlgorithmResult:
         if inputs is None:

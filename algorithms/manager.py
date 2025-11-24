@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from typing import List, Type
 
+from pydantic import ValidationError
+
 from algorithms import Algorithm, AlgorithmFormInput
 
 algorithm_classes: List[Type[Algorithm]] = []
@@ -24,17 +26,32 @@ def load_algorithms() -> None:
 
                 try:
                     module = importlib.import_module(module_name)
-                    for name, obj in inspect.getmembers(module, inspect.isclass):
-                        if (issubclass(obj, Algorithm) and
-                                obj != Algorithm and
-                                not inspect.isabstract(obj)):
-                            algorithm_classes.append(obj)
-                            algorithm_names.append(obj.id)
+                    for _, cls in inspect.getmembers(module, inspect.isclass):
+                        # Ignore any classes that are not defined in the plugins directory
+                        if cls.__module__ != module_name:
+                            continue
 
+                        # Skip classes that are not subclasses of Algorithm or are abstract
+                        if cls is Algorithm or not issubclass(cls, Algorithm):
+                            continue
+                        if inspect.isabstract(cls):
+                            continue
+
+                        # Will raise a validation error if the class is not valid
+                        cls.model_validate({
+                            "model_xml": "<xml/>",
+                        })
+
+                        algorithm_classes.append(cls)
+                        algorithm_names.append(cls.id)
+                except TypeError as e:
+                    raise Exception(f"{module_name} failed to import due to a type error: {e}")
+                except ValidationError as e:
+                    raise Exception(f"{module_name} failed to import due to a validation error: {e}")
                 except ImportError as e:
-                    raise Exception(f"failed to import {module_name}: {e}")
+                    raise Exception(f"{module_name} failed to import: {e}")
                 except Exception as e:
-                    raise Exception(f"error processing {module_name}: {e}")
+                    raise Exception(f"could not load {module_name}: {e}")
 
     print(f"Algorithms loaded successfully ({len(algorithm_classes)}).")
     print(f"Found the following algorithms:\n{algorithm_names}")
@@ -48,13 +65,13 @@ class AlgorithManager:
         self.algorithms = {}
 
         for algorithm_class in algorithm_classes:
-            algorithm = algorithm_class(model_xml)
+            algorithm = algorithm_class(model_xml=model_xml)
             self.algorithms[algorithm.id] = algorithm
 
     def list_algorithms(self) -> list[dict[str, str | tuple[str, list[AlgorithmFormInput]]]]:
         algorithms = []
         for algorithm in self.algorithms.values():
-            algorithms.append({"id": algorithm.id, "inputs": algorithm.inputs(), "category": algorithm.algorithm_type,  "name": algorithm.name})
+            algorithms.append({"id": algorithm.id, "inputs": algorithm.inputs(), "category": algorithm.algorithm_kind, "name": algorithm.name})
 
         return algorithms
 

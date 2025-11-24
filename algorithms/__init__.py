@@ -1,12 +1,8 @@
-import importlib
-import inspect
-import os
 from abc import ABC, abstractmethod
-from pathlib import Path
+from enum import Enum
+from typing import List, ClassVar
 
-from pydantic import BaseModel
-from typing import List, Any, Type
-
+from pydantic import BaseModel, ConfigDict
 
 class AlgorithmFormInput(BaseModel):
     """This class describes the form elements required for the input for the algorithm."""
@@ -43,15 +39,25 @@ class AlgorithmResult(BaseModel):
     inputs: List[AlgorithmInput] = []
 
 
-class Algorithm(ABC):
-    """Every algorithm must implement this class."""
-    id: str
-    name: str
-    description: str
-    algorithm_type: str
+class AlgorithmKind(str, Enum):
+    SEMANTIC    = "Semantic"
+    STRUCTURAL  = "Structural"
+    BEHAVIORAL = "Behavioural"
 
-    def __init__(self, model_xml: str):
-        self.model_xml = model_xml
+
+class Algorithm(BaseModel, ABC):
+    """Every algorithm must implement this class."""
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    # These fields must be defined as class attributes with defaults in subclasses
+    id: ClassVar[str]
+    name: ClassVar[str]
+    description: ClassVar[str]
+    algorithm_kind: ClassVar[AlgorithmKind]
+    threshold: ClassVar[float] = 0.0
+
+    # This field must be provided at instantiation
+    model_xml: str
 
     @abstractmethod
     def analyze(self, inputs: List[AlgorithmInput] = None) -> AlgorithmResult:

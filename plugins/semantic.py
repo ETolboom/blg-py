@@ -8,18 +8,15 @@ from algorithms import *
 from utils import get_elements_by_type
 from utils.similarity import create_similarity_matrix
 
-algorithm_category = "Similarity"
+algorithm_category = AlgorithmKind.SEMANTIC
 
 
 class AtomicityCheck(Algorithm):
-    id = "atomicity_check"
-    name = "Label Atomicity"
-    description = "Check the task labels for atomicity"
-    algorithm_type = algorithm_category
-    threshold = 0.85
-
-    def __init__(self, model_xml: str):
-        super().__init__(model_xml)
+    id: ClassVar[str] = "atomicity_check"
+    name: ClassVar[str] = "Label Atomicity"
+    description: ClassVar[str] = "Check the task labels for atomicity"
+    algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
+    threshold: ClassVar[float] = 0.85
 
     def analyze(self, inputs=None) -> AlgorithmResult:
         tasks: List[(str, str)] = get_elements_by_type(self.model_xml, "task")
@@ -47,15 +44,11 @@ class AtomicityCheck(Algorithm):
 
 
 class ExactDuplicateTasks(Algorithm):
-    id = "exact_duplicate_tasks"
-    name = "Exact Duplicate Tasks"
-    description = "Check the model for any duplicate tasks based on fuzzy matching"
-    algorithm_type = algorithm_category
-
-    threshold = 0.90
-
-    def __init__(self, model_xml: str):
-        super().__init__(model_xml)
+    id: ClassVar[str] = "exact_duplicate_tasks"
+    name: ClassVar[str] = "Exact Duplicate Tasks"
+    description: ClassVar[str] = "Check the model for any duplicate tasks based on fuzzy matching"
+    algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
+    threshold: ClassVar[float] = 0.90
 
     def analyze(self, inputs=None) -> AlgorithmResult:
         tasks = get_elements_by_type(self.model_xml, "task")
@@ -92,15 +85,11 @@ class ExactDuplicateTasks(Algorithm):
 
 
 class SemanticDuplicateTasks(Algorithm):
-    id = "semantic_duplicate_tasks"
-    name = "Semantically Duplicate Tasks"
-    description = "Check the model for any duplicate tasks based on semantic matching"
-    algorithm_type = algorithm_category
-
-    threshold = 0.75
-
-    def __init__(self, model_xml: str):
-        super().__init__(model_xml)
+    id: ClassVar[str] = "semantic_duplicate_tasks"
+    name: ClassVar[str] = "Semantically Duplicate Tasks"
+    description: ClassVar[str] = "Check the model for any duplicate tasks based on semantic matching"
+    algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
+    threshold: ClassVar[float] = 0.75
 
     def analyze(self, inputs=None) -> AlgorithmResult:
         tasks = get_elements_by_type(self.model_xml, "task")

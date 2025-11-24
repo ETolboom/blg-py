@@ -1,20 +1,16 @@
-from typing import List
+from typing import List, ClassVar
 
 import bpmn_analyzer
 
-from algorithms import Algorithm, AlgorithmResult, AlgorithmFormInput
+from algorithms import Algorithm, AlgorithmResult, AlgorithmFormInput, AlgorithmKind
 
-algorithm_category = "Control Flow"
-
+algorithm_category = AlgorithmKind.STRUCTURAL
 
 class Synchronization(Algorithm):
-    id = "synchronization"
-    name = "Synchronization"
-    description = "The process model properly synchronizes concurrent activities."
-    algorithm_type = algorithm_category
-
-    def __init__(self, model_xml: str):
-        super().__init__(model_xml)
+    id: ClassVar[str] = "synchronization"
+    name: ClassVar[str] = "Synchronization"
+    description: ClassVar[str] = "The process model properly synchronizes concurrent activities."
+    algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
     def analyze(self, inputs=None) -> AlgorithmResult:
         result = bpmn_analyzer.analyze_safeness(self.model_xml)
@@ -35,13 +31,10 @@ class Synchronization(Algorithm):
 
 
 class DeadActivity(Algorithm):
-    id = "dead_activity"
-    name = "Dead Activities"
-    description = "All activities in the process model are reachable and can be executed"
-    algorithm_type = algorithm_category
-
-    def __init__(self, model_xml: str):
-        super().__init__(model_xml)
+    id: ClassVar[str] = "dead_activity"
+    name: ClassVar[str] = "Dead Activities"
+    description: ClassVar[str] = "All activities in the process model are reachable and can be executed"
+    algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
     def analyze(self, inputs=None) -> AlgorithmResult:
         result = bpmn_analyzer.analyze_dead_activities(self.model_xml)
@@ -62,13 +55,10 @@ class DeadActivity(Algorithm):
 
 
 class ProperCompletion(Algorithm):
-    id = "proper_completion"
-    name = "Unique End Event Execution"
-    description = "There is a single unambiguous way to reach the final end event."
-    algorithm_type = algorithm_category
-
-    def __init__(self, model_xml: str):
-        super().__init__(model_xml)
+    id: ClassVar[str] = "proper_completion"
+    name: ClassVar[str] = "Unique End Event Execution"
+    description: ClassVar[str] = "There is a single unambiguous way to reach the final end event."
+    algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
     def analyze(self, inputs=None) -> AlgorithmResult:
         result = bpmn_analyzer.analyze_proper_completion(self.model_xml)
@@ -89,13 +79,10 @@ class ProperCompletion(Algorithm):
 
 
 class OptionToComplete(Algorithm):
-    id = "option_to_complete"
-    name = "No deadlocks"
-    description = "The process model can definitively reach its end state. E.g., no deadlocks"
-    algorithm_type = algorithm_category
-
-    def __init__(self, model_xml: str):
-        super().__init__(model_xml)
+    id: ClassVar[str] = "option_to_complete"
+    name: ClassVar[str] = "No deadlocks"
+    description: ClassVar[str] = "The process model can definitively reach its end state. E.g., no deadlocks"
+    algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
     def analyze(self, inputs=None) -> AlgorithmResult:
         result = bpmn_analyzer.analyze_option_to_complete(self.model_xml)

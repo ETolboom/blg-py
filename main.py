@@ -301,10 +301,10 @@ async def analyze_all(req: Request):
         algorithm = manager.get_algorithm(entry["id"])
         if algorithm.is_applicable():
             # We order algorithms by category
-            if algorithm.algorithm_type in applicable_algorithms:
-                applicable_algorithms[algorithm.algorithm_type].append(algorithm)
+            if algorithm.algorithm_kind in applicable_algorithms:
+                applicable_algorithms[algorithm.algorithm_kind].append(algorithm)
             else:
-                applicable_algorithms[algorithm.algorithm_type] = [algorithm]
+                applicable_algorithms[algorithm.algorithm_kind] = [algorithm]
 
     class NodeData:
         id: str

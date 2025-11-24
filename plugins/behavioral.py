@@ -1,26 +1,23 @@
-from typing import List, Tuple, Optional, overload, Any
+from typing import ClassVar, List, Tuple, Optional, overload, Any
 from dataclasses import dataclass
 
 import numpy as np
 import torch
 from scipy.optimize import linear_sum_assignment
 
-from algorithms import Algorithm, AlgorithmInput, AlgorithmResult, AlgorithmFormInput
+from algorithms import Algorithm, AlgorithmInput, AlgorithmResult, AlgorithmFormInput, AlgorithmKind
 from bpmn.bpmn import Bpmn
 from utils.similarity import create_similarity_matrix
 
-algorithm_category = "Behavioral"
+algorithm_category = AlgorithmKind.BEHAVIORAL
 
 class GatewayCheck(Algorithm):
-    id = "gateway_check"
-    name = "Gateway Check"
-    description = "Check if a gateway is mapped implemented according to the algorithm input"
-    algorithm_type = algorithm_category
-    supported_gateway_types = ['exclusiveGateway', 'parallelGateway']
-    threshold = 0.8
-
-    def __init__(self, model_xml: str):
-        super().__init__(model_xml)
+    id: ClassVar[str] = "gateway_check"
+    name: ClassVar[str] = "Gateway Check"
+    description: ClassVar[str] = "Check if a gateway is mapped implemented according to the algorithm input"
+    algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
+    supported_gateway_types: ClassVar[List[str]] = ['exclusiveGateway', 'parallelGateway']
+    threshold: ClassVar[float] = 0.8
 
     def analyze(self, inputs: List[AlgorithmInput] = None) -> AlgorithmResult:
         # Parse the BPMN model from the input XML.
@@ -139,6 +136,7 @@ class GatewayCheck(Algorithm):
     def is_applicable(self) -> bool:
         # Guessing what gateways becomes really messy
         return False
+
 
 @dataclass
 class Gateway:
