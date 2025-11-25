@@ -2,7 +2,7 @@ import io
 
 import pandas as pd
 
-from typing import Union, List, Optional
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -18,18 +18,18 @@ class Assignment(BaseModel):
 
 
 class RubricCriterion(AlgorithmResult):
-    custom_score: Union[float, None]
+    custom_score: Optional[float]
     default_points: float
 
 
 class OnboardingRubric(BaseModel):
     assignment: Assignment
-    algorithms: List[str] = []
+    algorithms: list[str] = []
 
 
 class Rubric(BaseModel):
-    criteria: List[RubricCriterion]
-    assignment: Union[Assignment, None]
+    criteria: list[RubricCriterion]
+    assignment: Optional[Assignment]
 
     def to_excel_worksheet(self, writer, filename: str) -> None:
         workbook = writer.book

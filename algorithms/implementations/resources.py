@@ -1,4 +1,4 @@
-from typing import List, ClassVar
+from typing import ClassVar
 
 from utils.similarity import match_labels
 from utils import get_elements_by_type
@@ -24,18 +24,18 @@ class PoolLaneCheck(Algorithm):
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
     threshold: ClassVar[float] = 0.70
 
-    def analyze(self, inputs: List[AlgorithmInput] = None) -> AlgorithmResult:
+    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
         if inputs is None:
             # Analyze pools & lanes whilst taking reference xml as ground truth.
-            inputs: List[AlgorithmInput] = []
+            inputs = []
             model = Bpmn(self.model_xml)
 
             for pool in model.pools:
                 inputs.append(
                     AlgorithmInput(
                         key=pool.name,
-                        # In case you have a pool with a single lane then technically a lane exists that has no name
-                        # hence the type check.
+                        # In case you have a pool with a single lane then technically a
+                        # lane exists that has no name hence the type check.
                         value=[
                             lane.name for lane in pool.lanes if lane.name is not None
                         ],
@@ -49,7 +49,7 @@ class PoolLaneCheck(Algorithm):
                 id=self.id,
                 name=self.name,
                 description=self.description,
-                category=self.algorithm_type,
+                category=self.algorithm_kind,
                 problematic_elements=[],
                 fulfilled=True,
                 inputs=inputs,
@@ -69,7 +69,7 @@ class PoolLaneCheck(Algorithm):
                 id=self.id,
                 name=self.name,
                 description=self.description,
-                category=self.algorithm_type,
+                category=self.algorithm_kind,
                 problematic_elements=[],
                 fulfilled=None,
                 inputs=inputs,
@@ -99,7 +99,7 @@ class PoolLaneCheck(Algorithm):
                 id=self.id,
                 name=self.name,
                 description=self.description,
-                category=self.algorithm_type,
+                category=self.algorithm_kind,
                 problematic_elements=list(missing_matches),
                 fulfilled=False,
                 inputs=inputs,
@@ -139,13 +139,13 @@ class PoolLaneCheck(Algorithm):
             id=self.id,
             name=self.name,
             description=self.description,
-            category=self.algorithm_type,
+            category=self.algorithm_kind,
             problematic_elements=missing_ids,
             fulfilled=(len(missing_ids) == 0),
             inputs=inputs,
         )
 
-    def inputs(self) -> List[AlgorithmFormInput]:
+    def inputs(self) -> list[AlgorithmFormInput]:
         return [
             AlgorithmFormInput(
                 input_label="Pools and lanes",
@@ -178,7 +178,7 @@ class ResourceCheck(Algorithm):
     )
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
-    def analyze(self, inputs: List[AlgorithmInput] = None) -> AlgorithmResult:
+    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
         if inputs is None:
             raise Exception("Invalid input: missing")
 
@@ -206,12 +206,12 @@ class ResourceCheck(Algorithm):
             id=self.id,
             name=self.name,
             description=self.description,
-            category=self.algorithm_type,
+            category=self.algorithm_kind,
             fulfilled=fulfilled,
             problematic_elements=problematic_elements,
         )
 
-    def inputs(self) -> List[AlgorithmFormInput]:
+    def inputs(self) -> list[AlgorithmFormInput]:
         return [
             AlgorithmFormInput(
                 input_label="Check for a specific resource",

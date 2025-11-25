@@ -1,0 +1,53 @@
+[tool.ruff]
+target-version = "py310"
+exclude = [
+    ".venv",
+    ".git",
+    ".idea",
+    ".vscode",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "build",
+    "dist",
+    "cache",
+    "target",
+]
+
+[project]
+name = "blg"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.122.0",
+    "matplotlib>=3.10.7",
+    "maturin>=1.10.2",
+    "numpy>=2.2.6",
+    "openpyxl>=3.1.5",
+    "pandas>=2.3.3",
+    "pip>=25.3",
+    "pydantic>=2.12.4",
+    "scikit-learn>=1.7.2",
+    "scipy>=1.15.3",
+    "spacy>=3.8.11",
+    "thefuzz>=0.22.1",
+    "torch>=2.9.1",
+    "transformers>=4.57.2",
+    "uvicorn>=0.38.0",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "UP"] 
+fixable = ["ALL"]
+
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.maturin]
+module-name = "bpmn_analyzer"
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"

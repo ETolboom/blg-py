@@ -1,8 +1,14 @@
-from typing import List, ClassVar
+from typing import ClassVar
 
 import bpmn_analyzer
 
-from algorithms import Algorithm, AlgorithmResult, AlgorithmFormInput, AlgorithmKind
+from algorithms import (
+    Algorithm,
+    AlgorithmResult,
+    AlgorithmFormInput,
+    AlgorithmKind,
+    AlgorithmInput,
+)
 
 algorithm_category = AlgorithmKind.STRUCTURAL
 
@@ -15,18 +21,18 @@ class Synchronization(Algorithm):
     )
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
-    def analyze(self, inputs=None) -> AlgorithmResult:
+    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
         result = bpmn_analyzer.analyze_safeness(self.model_xml)
         return AlgorithmResult(
             id=self.id,
             name=result.property_name,
             description=self.description,
-            category=self.algorithm_type,
+            category=self.algorithm_kind,
             fulfilled=result.fulfilled,
             problematic_elements=result.problematic_elements,
         )
 
-    def inputs(self) -> List[AlgorithmFormInput]:
+    def inputs(self) -> list[AlgorithmFormInput]:
         return []
 
     def is_applicable(self) -> bool:
@@ -41,18 +47,18 @@ class DeadActivity(Algorithm):
     )
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
-    def analyze(self, inputs=None) -> AlgorithmResult:
+    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
         result = bpmn_analyzer.analyze_dead_activities(self.model_xml)
         return AlgorithmResult(
             id=self.id,
             name=result.property_name,
             description=self.description,
-            category=self.algorithm_type,
+            category=self.algorithm_kind,
             fulfilled=result.fulfilled,
             problematic_elements=result.problematic_elements,
         )
 
-    def inputs(self) -> List[AlgorithmFormInput]:
+    def inputs(self) -> list[AlgorithmFormInput]:
         return []
 
     def is_applicable(self) -> bool:
@@ -67,18 +73,18 @@ class ProperCompletion(Algorithm):
     )
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
-    def analyze(self, inputs=None) -> AlgorithmResult:
+    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
         result = bpmn_analyzer.analyze_proper_completion(self.model_xml)
         return AlgorithmResult(
             id=self.id,
             name=result.property_name,
             description=self.description,
-            category=self.algorithm_type,
+            category=self.algorithm_kind,
             fulfilled=result.fulfilled,
             problematic_elements=result.problematic_elements,
         )
 
-    def inputs(self) -> List[AlgorithmFormInput]:
+    def inputs(self) -> list[AlgorithmFormInput]:
         return []
 
     def is_applicable(self) -> bool:
@@ -93,18 +99,18 @@ class OptionToComplete(Algorithm):
     )
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
-    def analyze(self, inputs=None) -> AlgorithmResult:
+    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
         result = bpmn_analyzer.analyze_option_to_complete(self.model_xml)
         return AlgorithmResult(
             id=self.id,
             name=self.name,
             description=self.description,
-            category=self.algorithm_type,
+            category=self.algorithm_kind,
             fulfilled=result.fulfilled,
             problematic_elements=result.problematic_elements,
         )
 
-    def inputs(self) -> List[AlgorithmFormInput]:
+    def inputs(self) -> list[AlgorithmFormInput]:
         return []
 
     def is_applicable(self) -> bool:

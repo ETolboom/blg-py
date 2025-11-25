@@ -1,11 +1,17 @@
 from collections import defaultdict
-from typing import ClassVar, List
+from typing import ClassVar
 
 import spacy
 import torch
-from fuzzywuzzy import fuzz
+from thefuzz import fuzz
 
-from algorithms import Algorithm, AlgorithmFormInput, AlgorithmKind, AlgorithmResult
+from algorithms import (
+    Algorithm,
+    AlgorithmFormInput,
+    AlgorithmInput,
+    AlgorithmKind,
+    AlgorithmResult,
+)
 from utils import get_elements_by_type
 from utils.similarity import create_similarity_matrix
 
@@ -19,8 +25,8 @@ class AtomicityCheck(Algorithm):
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
     threshold: ClassVar[float] = 0.85
 
-    def analyze(self, inputs=None) -> AlgorithmResult:
-        tasks: List[(str, str)] = get_elements_by_type(self.model_xml, "task")
+    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
+        tasks: list[tuple[str, str]] = get_elements_by_type(self.model_xml, "task")
         problematic_elements = []
         for label, element_id in tasks:
             single_action = check_single_action(label)
@@ -32,12 +38,12 @@ class AtomicityCheck(Algorithm):
             id=self.id,
             name=self.name,
             description=self.description,
-            category=self.algorithm_type,
+            category=self.algorithm_kind,
             fulfilled=(len(problematic_elements) == 0),
             problematic_elements=problematic_elements,
         )
 
-    def inputs(self) -> List[AlgorithmFormInput]:
+    def inputs(self) -> list[AlgorithmFormInput]:
         return []
 
     def is_applicable(self) -> bool:
@@ -53,7 +59,7 @@ class ExactDuplicateTasks(Algorithm):
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
     threshold: ClassVar[float] = 0.90
 
-    def analyze(self, inputs=None) -> AlgorithmResult:
+    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
         tasks = get_elements_by_type(self.model_xml, "task")
 
         problematic_elements = []
@@ -75,12 +81,12 @@ class ExactDuplicateTasks(Algorithm):
             id=self.id,
             name=self.name,
             description=self.description,
-            category=self.algorithm_type,
+            category=self.algorithm_kind,
             fulfilled=(len(problematic_elements) == 0),
             problematic_elements=problematic_elements,
         )
 
-    def inputs(self) -> List[AlgorithmFormInput]:
+    def inputs(self) -> list[AlgorithmFormInput]:
         return []
 
     def is_applicable(self) -> bool:
@@ -96,7 +102,7 @@ class SemanticDuplicateTasks(Algorithm):
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
     threshold: ClassVar[float] = 0.75
 
-    def analyze(self, inputs=None) -> AlgorithmResult:
+    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
         tasks = get_elements_by_type(self.model_xml, "task")
 
         problematic_elements = []
@@ -118,12 +124,12 @@ class SemanticDuplicateTasks(Algorithm):
             id=self.id,
             name=self.name,
             description=self.description,
-            category=self.algorithm_type,
+            category=self.algorithm_kind,
             fulfilled=(len(problematic_elements) == 0),
             problematic_elements=problematic_elements,
         )
 
-    def inputs(self) -> List[AlgorithmFormInput]:
+    def inputs(self) -> list[AlgorithmFormInput]:
         return []
 
     def is_applicable(self) -> bool:
@@ -135,17 +141,17 @@ class SemanticDuplicateTasks(Algorithm):
 nlp = spacy.load("en_core_web_md")
 
 
-def check_single_action(label):
+def check_single_action(label: str) -> bool:
     doc = nlp(label)
     verbs = [token for token in doc if token.pos_ == "VERB"]
     return len(verbs) <= 1
 
 
-def atomicity_score(label):
+def atomicity_score(label: str) -> float:
     words = label.split()
     conjunction_words = ["and", "or", "then", "after", "also"]
 
-    penalties = 0
+    penalties: float = 0.0
     penalties += len(words) * 0.1
     penalties += sum(1 for word in words if word.lower() in conjunction_words) * 2
     penalties /= 10  # Scale back to 0-1
@@ -153,7 +159,9 @@ def atomicity_score(label):
     return max(0, 1 - penalties)
 
 
-def find_semantic_duplicates(tuples_list, threshold):
+def find_semantic_duplicates(
+    tuples_list: list[tuple[str, str]], threshold: float
+) -> dict:
     # Extract just task label
     labels = [t[0] for t in tuples_list]
 
@@ -193,10 +201,10 @@ def find_semantic_duplicates(tuples_list, threshold):
     return groups
 
 
-def find_fuzzy_duplicates(tuples_list, threshold):
+def find_fuzzy_duplicates(tuples_list: list[tuple[str, str]], threshold: float) -> dict:
     groups = defaultdict(list)
     processed = set()
-    threshold *= 100  # Fuzzywuzzy using values between 0-100
+    threshold *= 100  # Thefuzz using values between 0-100
 
     for i, current_tuple in enumerate(tuples_list):
         if i in processed:

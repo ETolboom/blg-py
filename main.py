@@ -3,18 +3,17 @@ import io
 import json
 import os
 import sys
-
-from typing import List, Union
+from typing import Optional, Union
 
 import pandas as pd
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, Response
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from pydantic_core import from_json
 
 import algorithms.manager
-from algorithms import Algorithm, AlgorithmInput
-from rubric import Rubric, OnboardingRubric, RubricCriterion
+from algorithms import Algorithm, AlgorithmFormInput, AlgorithmInput
+from rubric import OnboardingRubric, Rubric, RubricCriterion
 
 app = FastAPI()
 
@@ -23,7 +22,7 @@ origins = ["http://localhost:5173"]
 base_path = ""
 
 
-def get_rubric_from_disk() -> Union[Rubric, None]:
+def get_rubric_from_disk() -> Optional[Rubric]:
     if os.path.exists(os.path.join(base_path, "rubric.json")):
         try:
             with open(os.path.join(base_path, "rubric.json"), "r") as file:
@@ -44,7 +43,7 @@ def get_rubric_from_disk() -> Union[Rubric, None]:
 
 
 @app.get("/submissions")
-async def get_submissions_list() -> List[dict]:
+async def get_submissions_list() -> list[dict]:
     submissions_path = os.path.join(base_path, "submissions")
     os.makedirs(submissions_path, exist_ok=True)
     submissions = os.listdir(submissions_path)
@@ -115,9 +114,12 @@ async def export_all_submission() -> Response:
 @app.get("/submissions/{filename}")
 async def get_submission(filename: str) -> Response:
     if filename == "Reference":
-        return Response(
-            content=rubric.assignment.reference_xml, media_type="application/xml"
-        )
+        if rubric and rubric.assignment and rubric.assignment.reference_xml:
+            return Response(
+                content=rubric.assignment.reference_xml, media_type="application/xml"
+            )
+        else:
+            raise HTTPException(status_code=404, detail="Reference XML not found")
 
     submissions_path = os.path.join(base_path, "submissions", filename)
     with open(submissions_path, "r") as model:
@@ -132,8 +134,13 @@ async def get_current_rubric() -> Rubric:
 
 
 @app.post("/rubric")
-async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric):
-    manager = algorithms.manager.get_manager(onboarding_rubric.assignment.reference_xml)
+async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric) -> Rubric:
+    ref_xml = (
+        onboarding_rubric.assignment.reference_xml
+        if onboarding_rubric.assignment and onboarding_rubric.assignment.reference_xml
+        else ""
+    )
+    manager = algorithms.manager.get_manager(ref_xml)
 
     parsed_algorithms = []
     if len(onboarding_rubric.algorithms) != 0:
@@ -173,7 +180,7 @@ async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric):
 
 
 @app.post("/rubric/criteria/{algorithm_id}")
-async def update_criteria(algorithm_id: str, inputs: List[AlgorithmInput]):
+async def update_criteria(algorithm_id: str, inputs: list[AlgorithmInput]) -> Rubric:
     global rubric
 
     try:
@@ -189,7 +196,10 @@ async def update_criteria(algorithm_id: str, inputs: List[AlgorithmInput]):
         if index != -1:
             del rubric.criteria[index]
 
-        manager = algorithms.manager.get_manager(rubric.assignment.reference_xml)
+        if rubric and rubric.assignment and rubric.assignment.reference_xml:
+            manager = algorithms.manager.get_manager(rubric.assignment.reference_xml)
+        else:
+            manager = algorithms.manager.get_manager("")
         result = manager.get_algorithm(algorithm_id).analyze(inputs=inputs)
         rubric.criteria.append(
             RubricCriterion(
@@ -218,30 +228,31 @@ async def update_criteria(algorithm_id: str, inputs: List[AlgorithmInput]):
 
 
 @app.post("/rubric/description")
-async def update_rubric_description(req: Request):
+async def update_rubric_description(req: Request) -> None:
     description = await req.body()
     if not description:
-        return "request body is missing"
+        raise HTTPException(status_code=400, detail="request body is missing")
 
     description_lock = asyncio.Lock()
     async with description_lock:
         description = description.decode("utf-8")
 
         global rubric
-        rubric.assignment.description = description
+        if rubric and rubric.assignment:
+            rubric.assignment.description = description
 
         with open(os.path.join(base_path, "rubric.json"), "wt") as f:
             f.write(rubric.model_dump_json())
 
 
 @app.get("/algorithms")
-async def list_algorithms():
+async def list_algorithms() -> list[dict[str, str | list[AlgorithmFormInput]]]:
     manager = algorithms.manager.get_manager("")
     return manager.list_algorithms()
 
 
 @app.patch("/submissions/{filename}")
-async def update_submission(filename: str, criteria: List[RubricCriterion]):
+async def update_submission(filename: str, criteria: list[RubricCriterion]) -> None:
     submission = os.path.join(base_path, "submissions", filename + ".json")
     if not os.path.exists(submission):
         raise HTTPException(status_code=404, detail="Submission not found")
@@ -265,8 +276,8 @@ async def update_submission(filename: str, criteria: List[RubricCriterion]):
             f.write(parsed_rubric.model_dump_json())
 
 
-@app.post("/algorithms/analyze")
-async def analyze_submission(filename: str):
+@app.post("/algorithms/analyze", response_model=None)
+async def analyze_submission(filename: str) -> Union[Response, Rubric]:
     if filename == "":
         raise HTTPException(status_code=404, detail="No filename provided")
 
@@ -285,7 +296,7 @@ async def analyze_submission(filename: str):
 
     manager = algorithms.manager.get_manager(model_xml)
 
-    parsed_algorithms: List[RubricCriterion] = []
+    parsed_algorithms: list[RubricCriterion] = []
     for algorithm in rubric.criteria:
         result = manager.get_algorithm(algorithm.id).analyze(inputs=algorithm.inputs)
         parsed_algorithms.append(
@@ -314,18 +325,31 @@ async def analyze_submission(filename: str):
     return parsed_submission
 
 
+class NodeData(BaseModel):
+    id: str
+    name: str
+    description: str
+
+
+class Node(BaseModel):
+    key: str
+    data: NodeData
+    children: Optional[list["Node"]] = None
+
+
 @app.post("/algorithms/analyze/all")
-async def analyze_all(req: Request):
+async def analyze_all(req: Request) -> list[Node]:
     model_xml = await req.body()
     if not model_xml:
-        return "request body is missing"
+        raise HTTPException(status_code=400, detail="request body is missing")
 
     manager = algorithms.manager.get_manager(model_xml.decode())
     available_algorithms = manager.list_algorithms()
 
-    applicable_algorithms: dict[str, List[Algorithm]] = {}
+    applicable_algorithms: dict[str, list[Algorithm]] = {}
     for entry in available_algorithms:
-        algorithm = manager.get_algorithm(entry["id"])
+        alg_id = str(entry["id"])
+        algorithm = manager.get_algorithm(alg_id)
         if algorithm.is_applicable():
             # We order algorithms by category
             if algorithm.algorithm_kind in applicable_algorithms:
@@ -333,29 +357,7 @@ async def analyze_all(req: Request):
             else:
                 applicable_algorithms[algorithm.algorithm_kind] = [algorithm]
 
-    class NodeData:
-        id: str
-        name: str
-        description: str
-
-        def __init__(self, alg_id, name, description):
-            self.id = alg_id
-            self.name = name
-            self.description = description
-
-    class Node:
-        key: str
-        data: NodeData
-        children: Union[List, None] = None
-
-        def __init__(
-            self, key: str, data: NodeData, children: Union[List, None] = None
-        ):
-            self.key = key
-            self.data = data
-            self.children = children
-
-    nodes: List[Node] = []
+    nodes: list[Node] = []
 
     node_idx = 0
     for category in applicable_algorithms:
@@ -365,7 +367,7 @@ async def analyze_all(req: Request):
                 Node(
                     key=str(node_idx) + "-" + str(inner_node_idx),
                     data=NodeData(
-                        alg_id=algorithm.id,
+                        id=algorithm.id,
                         name=algorithm.name,
                         description=algorithm.description,
                     ),
@@ -376,7 +378,7 @@ async def analyze_all(req: Request):
             Node(
                 key=str(node_idx),
                 data=NodeData(
-                    alg_id="",
+                    id="",
                     name=category,
                     description="",
                 ),

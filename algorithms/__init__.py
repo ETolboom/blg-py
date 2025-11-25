@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import List, ClassVar
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict
 
@@ -26,7 +26,7 @@ class AlgorithmInput(BaseModel):
     """This class describes any elements required as input for the algorithm."""
 
     key: str = ""  # Only applicable to kv form type
-    value: List[str]
+    value: list[str]
 
 
 class AlgorithmResult(BaseModel):
@@ -39,7 +39,7 @@ class AlgorithmResult(BaseModel):
     fulfilled: bool | None = False
     confidence: float = 1.0
     problematic_elements: list[str] = []
-    inputs: List[AlgorithmInput] = []
+    inputs: list[AlgorithmInput] = []
 
 
 class AlgorithmKind(str, Enum):
@@ -64,12 +64,12 @@ class Algorithm(BaseModel, ABC):
     model_xml: str
 
     @abstractmethod
-    def analyze(self, inputs: List[AlgorithmInput] = None) -> AlgorithmResult:
+    def analyze(self, inputs: list[AlgorithmInput] | None) -> AlgorithmResult:
         """Analyze a given property based on inputs if available"""
         pass
 
     @abstractmethod
-    def inputs(self) -> List[AlgorithmFormInput]:
+    def inputs(self) -> list[AlgorithmFormInput]:
         """Return the available form inputs for the algorithm"""
         pass
 

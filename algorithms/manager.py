@@ -2,23 +2,24 @@ import importlib
 import inspect
 import os
 from pathlib import Path
-from typing import List, Type
 
 from pydantic import ValidationError
 
 from algorithms import Algorithm, AlgorithmFormInput
 
-algorithm_classes: List[Type[Algorithm]] = []
+algorithm_classes: list[type[Algorithm]] = []
 
 
 def load_algorithms() -> None:
-    plugin_path = Path("plugins")
-    if not plugin_path.exists():
-        raise FileNotFoundError(f"Could not find plugin directory: {plugin_path}")
+    implementations_path = Path("algorithms/implementations")
+    if not implementations_path.exists():
+        raise FileNotFoundError(
+            f"Could not find plugin directory: {implementations_path}"
+        )
 
     algorithm_names = []
 
-    for root, dirs, files in os.walk(plugin_path):
+    for root, dirs, files in os.walk(implementations_path):
         for file in files:
             if file.endswith(".py"):
                 file_path = Path(root) / file
@@ -63,12 +64,12 @@ def load_algorithms() -> None:
     print(f"Found the following algorithms:\n{algorithm_names}")
 
 
-class AlgorithManager:
-    algorithms: dict[str, Algorithm] = None
+class AlgorithmManager:
+    algorithms: dict[str, Algorithm] = {}
 
     def __init__(self, model_xml: str):
-        self.model_xml = model_xml
-        self.algorithms = {}
+        self.model_xml: str = model_xml
+        self.algorithms: dict[str, Algorithm] = {}
 
         for algorithm_class in algorithm_classes:
             algorithm = algorithm_class(model_xml=model_xml)
@@ -76,17 +77,16 @@ class AlgorithManager:
 
     def list_algorithms(
         self,
-    ) -> list[dict[str, str | tuple[str, list[AlgorithmFormInput]]]]:
+    ) -> list[dict[str, str | list[AlgorithmFormInput]]]:
         algorithms = []
         for algorithm in self.algorithms.values():
-            algorithms.append(
-                {
-                    "id": algorithm.id,
-                    "inputs": algorithm.inputs(),
-                    "category": algorithm.algorithm_kind,
-                    "name": algorithm.name,
-                }
-            )
+            entry: dict[str, str | list[AlgorithmFormInput]] = {
+                "id": algorithm.id,
+                "inputs": algorithm.inputs(),
+                "category": algorithm.algorithm_kind,
+                "name": algorithm.name,
+            }
+            algorithms.append(entry)
 
         return algorithms
 
@@ -94,5 +94,5 @@ class AlgorithManager:
         return self.algorithms[name]
 
 
-def get_manager(model_xml: str) -> AlgorithManager:
-    return AlgorithManager(model_xml=model_xml)
+def get_manager(model_xml: str) -> AlgorithmManager:
+    return AlgorithmManager(model_xml=model_xml)

@@ -1,5 +1,4 @@
 from xml.etree import ElementTree
-from typing import List
 from bpmn.struct import Pool, PoolElement, parse_lane_set
 
 
@@ -7,7 +6,7 @@ class Bpmn:
     """BPMN is an internal representation of the BPMN XML model."""
 
     def __init__(self, xml_string: str) -> None:
-        self.pools: List[Pool] = []
+        self.pools: list[Pool] = []
         self.__parse_xml(xml_string)
 
     def __str__(self):
@@ -29,17 +28,17 @@ class Bpmn:
         pools = root.findall(".//bpmn:process", namespace)
 
         for pool in pools:
-            parsed_pool = Pool(name=pool.get("name"), id=pool.get("id"))
-            pool_elements: List[PoolElement] = []
+            parsed_pool = Pool(name=pool.get("name") or "", id=pool.get("id") or "")
+            pool_elements: list[PoolElement] = []
             for child in pool:
                 element_type = child.tag.split("}")[-1]
 
                 element = PoolElement(
                     name=element_type,
-                    id=child.get("id"),
-                    label=child.get("name"),
+                    id=child.get("id") or "",
+                    label=child.get("name") or "",
                     # We can always try getting the direction, since .get() returns None if not found.
-                    gateway_direction=child.get("gatewayDirection"),
+                    gateway_direction=child.get("gatewayDirection") or "",
                 )
 
                 if not element.id:
@@ -52,7 +51,7 @@ class Bpmn:
                 elif element_type == "sequenceFlow":
                     parsed_pool.flows.append(
                         element.to_flow_element(
-                            child.get("sourceRef"), child.get("targetRef")
+                            child.get("sourceRef") or "", child.get("targetRef") or ""
                         )
                     )
                     continue
@@ -64,15 +63,15 @@ class Bpmn:
                         # These elements do not affect the flow of the entire graph
                         # case "ioSpecification":
                         # case "dataOutputAssociation":
-                        element.incoming.append(nested_child.text)
+                        element.incoming.append(nested_child.text or "")
                     elif nested_child_type == "outgoing":
-                        element.outgoing.append(nested_child.text)
+                        element.outgoing.append(nested_child.text or "")
                 pool_elements.append(element)
 
             parsed_pool.elements = pool_elements
             self.pools.append(parsed_pool)
 
-    def extract_tasks(self) -> List[str]:
+    def extract_tasks(self) -> list[str]:
         tasks: list[str] = []
         for pool in self.pools:
             for element in pool.elements:

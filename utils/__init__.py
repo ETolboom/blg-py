@@ -1,8 +1,7 @@
-from typing import List
 from xml.etree import ElementTree
 
 
-def get_elements_by_type(model_xml: str, element_type: str) -> List[tuple[str, str]]:
+def get_elements_by_type(model_xml: str, element_type: str) -> list[tuple[str, str]]:
     """
     Find elements in a model based on element type.
 
@@ -23,7 +22,9 @@ def get_elements_by_type(model_xml: str, element_type: str) -> List[tuple[str, s
     labels = []
     for element in elements:
         if element.attrib.get("name") is not None:
-            labels.append((element.attrib["name"].lower().strip(), element.attrib["id"]))
+            labels.append(
+                (element.attrib["name"].lower().strip(), element.attrib["id"])
+            )
 
     if len(labels) == 0:
         raise ValueError(f"Elements for type {element_type} have no labels")

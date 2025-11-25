@@ -1,7 +1,4 @@
-from typing import List
-
-
-def get_missing_tasks(source_tasks: List[str], target_tasks: List[str]) -> list[str]:
+def get_missing_tasks(source_tasks: list[str], target_tasks: list[str]) -> list[str]:
     """Helper function that returns a list of missing tasks in the source model when compared to a target model"""
     missing_tasks: list[str] = []
 

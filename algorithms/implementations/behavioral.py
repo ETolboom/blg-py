@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import ClassVar, List, Optional, Tuple
+from typing import ClassVar
 
 import numpy as np
 import torch
@@ -25,13 +25,13 @@ class GatewayCheck(Algorithm):
         "Check if a gateway is mapped implemented according to the algorithm input"
     )
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
-    supported_gateway_types: ClassVar[List[str]] = [
+    supported_gateway_types: ClassVar[list[str]] = [
         "exclusiveGateway",
         "parallelGateway",
     ]
     threshold: ClassVar[float] = 0.8
 
-    def analyze(self, inputs: List[AlgorithmInput] = None) -> AlgorithmResult:
+    def analyze(self, inputs: list[AlgorithmInput] | None) -> AlgorithmResult:
         # Parse the BPMN model from the input XML.
         model = Bpmn(self.model_xml)
 
@@ -53,7 +53,7 @@ class GatewayCheck(Algorithm):
                 id=self.id,
                 name=self.name,
                 description=self.description,
-                category=self.algorithm_type,
+                category=self.algorithm_kind,
                 fulfilled=None,
                 confidence=1.0,
                 problematic_elements=[],
@@ -127,7 +127,7 @@ class GatewayCheck(Algorithm):
                 return AlgorithmResult(
                     id=self.id,
                     name=self.name,
-                    category=self.algorithm_type,
+                    category=self.algorithm_kind,
                     description=self.description,
                     fulfilled=True,
                     confidence=max_confidence,
@@ -136,22 +136,23 @@ class GatewayCheck(Algorithm):
                 )
 
         problematic_elements = []
-        for branch in best_effort.branches:
-            for element in branch:
-                problematic_elements.append(element[1])
+        if best_effort:
+            for branch in best_effort.branches:
+                for element in branch:
+                    problematic_elements.append(element[1])
 
         return AlgorithmResult(
             id=self.id,
             name=self.name,
             description=self.description,
-            category=self.algorithm_type,
+            category=self.algorithm_kind,
             fulfilled=False,
             confidence=max_confidence,
             problematic_elements=problematic_elements,
             inputs=inputs,
         )
 
-    def inputs(self) -> List[AlgorithmFormInput]:
+    def inputs(self) -> list[AlgorithmFormInput]:
         return [
             AlgorithmFormInput(
                 input_label="Check a specific gateway",
@@ -170,17 +171,17 @@ class GatewayCheck(Algorithm):
 @dataclass
 class Gateway:
     gateway_type: str
-    element_before: Tuple[str, str]
-    element_after: Tuple[str, str]
-    branches: List[List[Tuple[str, str]]]
+    element_before: tuple[str, str]
+    element_after: tuple[str, str]
+    branches: list[list[tuple[str, str]]]
 
 
-def find_gateways_with_branches(bpmn: Bpmn) -> List[Gateway]:
+def find_gateways_with_branches(bpmn: Bpmn) -> list[Gateway]:
     gateways = []
     for pool in bpmn.pools:
         elements_by_id = {elem.id: elem for elem in pool.elements}
-        flows_by_source = {}
-        flows_by_target = {}
+        flows_by_source: dict[str, list[str]] = {}
+        flows_by_target: dict[str, list[str]] = {}
 
         for flow in pool.flows:
             if flow.source not in flows_by_source:
@@ -241,8 +242,8 @@ def find_gateways_with_branches(bpmn: Bpmn) -> List[Gateway]:
 
 def trace_branch(
     start_id: str, elements_by_id: dict, flows_by_source: dict
-) -> Tuple[List[Tuple[str, str]], Optional[str]]:
-    branch = []
+) -> tuple[list[tuple[str, str]], str | None]:
+    branch: list[tuple[str, str]] = []
     current_id = start_id
     visited = set()
 

@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from typing import List
 from xml.etree.ElementTree import Element
 
 
@@ -34,13 +33,13 @@ class PoolElement:
     label: str
 
     # Incoming contains all the IDs of elements that the PoolElement has incoming edges from.
-    incoming: List[str] = field(default_factory=list)
+    incoming: list[str] = field(default_factory=list)
 
     # Outgoing contains all the IDs of elements that the PoolElement has outgoing edges to.
-    outgoing: List[str] = field(default_factory=list)
+    outgoing: list[str] = field(default_factory=list)
 
     # Children stores all the PoolElement instances nested within the current PoolElement
-    children: List["PoolElement"] = field(default_factory=list)
+    children: list["PoolElement"] = field(default_factory=list)
 
     # GatewayDirection indicates the direction in which the gateway is going.
     # This can either be "Diverging" or "Converging".
@@ -67,7 +66,7 @@ class LaneElement:
     name: str
 
     # Elements contains a list of the ids of all elements that belong to the lane
-    elements: List[str] = field(default_factory=list)
+    elements: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -81,25 +80,25 @@ class Pool:
     name: str
 
     # Elements contains all elements within a Pool regardless of lane.
-    elements: List[PoolElement] = field(default_factory=list)
+    elements: list[PoolElement] = field(default_factory=list)
 
     # Flows contains all edges between nodes within a pool
-    flows: List[FlowElement] = field(default_factory=list)
+    flows: list[FlowElement] = field(default_factory=list)
 
     # Lanes contains information on all lanes within a pool.
-    lanes: List[LaneElement] = field(default_factory=list)
+    lanes: list[LaneElement] = field(default_factory=list)
 
 
-def parse_lane_set(lane_set: Element) -> List[LaneElement]:
-    lanes: List[LaneElement] = []
+def parse_lane_set(lane_set: Element) -> list[LaneElement]:
+    lanes: list[LaneElement] = []
     for lane in lane_set:
-        parsed_lane = LaneElement(id=lane.get("id"), name=lane.get("name"))
-        nodes: List[str] = []
+        parsed_lane = LaneElement(id=lane.get("id") or "", name=lane.get("name") or "")
+        nodes: list[str] = []
         for child in lane:
             element_type = child.tag.split("}")[-1]
             if element_type != "flowNodeRef":
                 continue
-            nodes.append(child.text)
+            nodes.append(child.text or "")
         parsed_lane.elements = nodes
         lanes.append(parsed_lane)
 
