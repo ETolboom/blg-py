@@ -46,7 +46,8 @@ fixable = ["ALL"]
 quote-style = "double"
 
 [tool.maturin]
-module-name = "bpmn_analyzer"
+module-name = "blg"
+python-source = "python"
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]

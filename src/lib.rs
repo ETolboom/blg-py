@@ -159,11 +159,20 @@ fn analyze_proper_completion(model: &str) -> PyResult<PyProperty> {
 
 // This is the module "entrypoint" for Python
 #[pymodule]
-fn bpmn_analyzer(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn blg(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyProperty>()?;
     m.add_function(wrap_pyfunction!(analyze_dead_activities, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_option_to_complete, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_proper_completion, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_safeness, m)?)?;
+    
+    m.add("__all__", vec![
+        "PyProperty",
+        "analyze_dead_activities",
+        "analyze_option_to_complete",
+        "analyze_proper_completion",
+        "analyze_safeness",
+    ])?;
+
     Ok(())
 }

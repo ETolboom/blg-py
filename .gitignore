@@ -5,3 +5,7 @@ example/rubric.json
 target/
 __pycache__
 .DS_Store
+*.so
+*.dylib
+*.dll
+*.pyd

@@ -1,6 +1,6 @@
 from typing import ClassVar
 
-import bpmn_analyzer
+import blg
 
 from algorithms import (
     Algorithm,
@@ -22,7 +22,7 @@ class Synchronization(Algorithm):
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
     def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
-        result = bpmn_analyzer.analyze_safeness(self.model_xml)
+        result = blg.analyze_safeness(self.model_xml)
         return AlgorithmResult(
             id=self.id,
             name=result.property_name,
@@ -48,7 +48,7 @@ class DeadActivity(Algorithm):
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
     def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
-        result = bpmn_analyzer.analyze_dead_activities(self.model_xml)
+        result = blg.analyze_dead_activities(self.model_xml)
         return AlgorithmResult(
             id=self.id,
             name=result.property_name,
@@ -74,7 +74,7 @@ class ProperCompletion(Algorithm):
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
     def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
-        result = bpmn_analyzer.analyze_proper_completion(self.model_xml)
+        result = blg.analyze_proper_completion(self.model_xml)
         return AlgorithmResult(
             id=self.id,
             name=result.property_name,
@@ -100,7 +100,7 @@ class OptionToComplete(Algorithm):
     algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
 
     def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
-        result = bpmn_analyzer.analyze_option_to_complete(self.model_xml)
+        result = blg.analyze_option_to_complete(self.model_xml)
         return AlgorithmResult(
             id=self.id,
             name=self.name,
