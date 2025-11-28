@@ -12,7 +12,7 @@ from pydantic import BaseModel, ValidationError
 from pydantic_core import from_json
 
 import algorithms.manager
-from algorithms import Algorithm, AlgorithmFormInput, AlgorithmInput
+from algorithms import Algorithm, AlgorithmFormInput, AlgorithmInput, AlgorithmKind
 from rubric import OnboardingRubric, Rubric, RubricCriterion
 
 app = FastAPI()
@@ -177,6 +177,61 @@ async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric) -> Rubri
         f.write(new_rubric.model_dump_json())
 
     return new_rubric
+
+
+class RuleTemplate(BaseModel):
+    id: str
+    name: str
+    description: str
+    maxPoints: int
+    nodes: str
+    edges: str
+
+
+@app.post("/rubric/criteria/behavioral/{behavioral_id}")
+async def add_behavioral_criteria(behavioral_id: str, inputs: RuleTemplate) -> Rubric:
+    global rubric
+
+    try:
+        # Prevent any duplicates by removing old instances of the algorithm.
+        index = next(
+            (
+                i
+                for i, criterion in enumerate(rubric.criteria)
+                if criterion.id == behavioral_id
+            ),
+            -1,
+        )
+        if index != -1:
+            del rubric.criteria[index]
+
+        rubric.criteria.append(
+            RubricCriterion(
+                id=inputs.id,
+                name=inputs.name,
+                description=inputs.description,
+                category=AlgorithmKind.BEHAVIORAL,
+                inputs=[
+                    AlgorithmInput(key="nodes", value=[inputs.nodes]),
+                    AlgorithmInput(key="edges", value=[inputs.edges]),
+                ],
+                fulfilled=True,
+                confidence=1.0,
+                problematic_elements=[],
+                default_points=inputs.maxPoints,
+                custom_score=None,
+            )
+        )
+
+        # Write new rubric to file so it persists
+        with open(os.path.join(base_path, "rubric.json"), "wt") as f:
+            f.write(rubric.model_dump_json())
+
+        return rubric
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update criteria: {str(e)}"
+        )
 
 
 @app.post("/rubric/criteria/{algorithm_id}")

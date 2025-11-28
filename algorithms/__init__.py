@@ -45,7 +45,7 @@ class AlgorithmResult(BaseModel):
 class AlgorithmKind(str, Enum):
     SEMANTIC = "Semantic"
     STRUCTURAL = "Structural"
-    BEHAVIORAL = "Behavioural"
+    BEHAVIORAL = "Behavioral"
 
 
 class Algorithm(BaseModel, ABC):

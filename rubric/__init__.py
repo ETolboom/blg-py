@@ -1,24 +1,22 @@
 import io
-
-import pandas as pd
-
 from typing import Optional
 
+import pandas as pd
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from pydantic import BaseModel
 
 from algorithms import AlgorithmResult
-from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 
 
 class Assignment(BaseModel):
     # Set default values in case we want to onboard without
     # a reference model/description
-    reference_xml: Optional[str] = ""
-    description: Optional[str] = ""
+    reference_xml: str | None = ""
+    description: str | None = ""
 
 
 class RubricCriterion(AlgorithmResult):
-    custom_score: Optional[float]
+    custom_score: float | None
     default_points: float
 
 
@@ -29,7 +27,7 @@ class OnboardingRubric(BaseModel):
 
 class Rubric(BaseModel):
     criteria: list[RubricCriterion]
-    assignment: Optional[Assignment]
+    assignment: Assignment | None
 
     def to_excel_worksheet(self, writer, filename: str) -> None:
         workbook = writer.book
