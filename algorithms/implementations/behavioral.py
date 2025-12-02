@@ -7,15 +7,13 @@ from scipy.optimize import linear_sum_assignment
 
 from algorithms import (
     Algorithm,
+    AlgorithmComplexity,
     AlgorithmFormInput,
     AlgorithmInput,
-    AlgorithmKind,
     AlgorithmResult,
 )
 from bpmn.bpmn import Bpmn
 from utils.similarity import create_similarity_matrix
-
-algorithm_category = AlgorithmKind.BEHAVIORAL
 
 
 class GatewayCheck(Algorithm):
@@ -24,7 +22,7 @@ class GatewayCheck(Algorithm):
     description: ClassVar[str] = (
         "Check if a gateway is mapped implemented according to the algorithm input"
     )
-    algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
+    algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.CONFIGURABLE
     supported_gateway_types: ClassVar[list[str]] = [
         "exclusiveGateway",
         "parallelGateway",

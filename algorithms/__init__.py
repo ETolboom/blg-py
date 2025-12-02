@@ -42,10 +42,10 @@ class AlgorithmResult(BaseModel):
     inputs: list[AlgorithmInput] = []
 
 
-class AlgorithmKind(str, Enum):
-    SEMANTIC = "Semantic"
-    STRUCTURAL = "Structural"
-    BEHAVIORAL = "Behavioral"
+class AlgorithmComplexity(str, Enum):
+    SIMPLE = "Simple"
+    CONFIGURABLE = "Configurable"
+    COMPLEX = "Complex"
 
 
 class Algorithm(BaseModel, ABC):
@@ -57,7 +57,7 @@ class Algorithm(BaseModel, ABC):
     id: ClassVar[str]
     name: ClassVar[str]
     description: ClassVar[str]
-    algorithm_kind: ClassVar[AlgorithmKind]
+    algorithm_kind: ClassVar[AlgorithmComplexity]
     threshold: ClassVar[float] = 0.0
 
     # This field must be provided at instantiation

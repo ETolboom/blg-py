@@ -1,18 +1,15 @@
 from typing import ClassVar
 
-from utils.similarity import match_labels
-from utils import get_elements_by_type
 from algorithms import (
     Algorithm,
-    AlgorithmResult,
+    AlgorithmComplexity,
     AlgorithmFormInput,
     AlgorithmInput,
-    AlgorithmKind,
+    AlgorithmResult,
 )
-
 from bpmn.bpmn import Bpmn
-
-algorithm_category = AlgorithmKind.STRUCTURAL
+from utils import get_elements_by_type
+from utils.similarity import match_labels
 
 
 class PoolLaneCheck(Algorithm):
@@ -21,7 +18,7 @@ class PoolLaneCheck(Algorithm):
     description: ClassVar[str] = (
         "Check for specific amount and label of the existing pools and lanes in a model"
     )
-    algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
+    algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.CONFIGURABLE
     threshold: ClassVar[float] = 0.70
 
     def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
@@ -176,7 +173,7 @@ class ResourceCheck(Algorithm):
     description: ClassVar[str] = (
         "Check the model for the use of a specific element such as a data store."
     )
-    algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
+    algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.CONFIGURABLE
 
     def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
         if inputs is None:

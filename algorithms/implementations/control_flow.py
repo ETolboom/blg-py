@@ -4,13 +4,11 @@ import blg
 
 from algorithms import (
     Algorithm,
-    AlgorithmResult,
+    AlgorithmComplexity,
     AlgorithmFormInput,
-    AlgorithmKind,
     AlgorithmInput,
+    AlgorithmResult,
 )
-
-algorithm_category = AlgorithmKind.STRUCTURAL
 
 
 class Synchronization(Algorithm):
@@ -19,7 +17,7 @@ class Synchronization(Algorithm):
     description: ClassVar[str] = (
         "The process model properly synchronizes concurrent activities."
     )
-    algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
+    algorithm_kind: ClassVar[AlgorithmComplexity] =  AlgorithmComplexity.SIMPLE
 
     def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
         result = blg.analyze_safeness(self.model_xml)
@@ -45,7 +43,7 @@ class DeadActivity(Algorithm):
     description: ClassVar[str] = (
         "All activities in the process model are reachable and can be executed"
     )
-    algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
+    algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.SIMPLE
 
     def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
         result = blg.analyze_dead_activities(self.model_xml)
@@ -71,7 +69,7 @@ class ProperCompletion(Algorithm):
     description: ClassVar[str] = (
         "There is a single unambiguous way to reach the final end event."
     )
-    algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
+    algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.SIMPLE
 
     def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
         result = blg.analyze_proper_completion(self.model_xml)
@@ -97,7 +95,7 @@ class OptionToComplete(Algorithm):
     description: ClassVar[str] = (
         "The process model can definitively reach its end state. E.g., no deadlocks"
     )
-    algorithm_kind: ClassVar[AlgorithmKind] = algorithm_category
+    algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.SIMPLE
 
     def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
         result = blg.analyze_option_to_complete(self.model_xml)

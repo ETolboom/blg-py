@@ -12,7 +12,12 @@ from pydantic import BaseModel, ValidationError
 from pydantic_core import from_json
 
 import algorithms.manager
-from algorithms import Algorithm, AlgorithmFormInput, AlgorithmInput, AlgorithmKind
+from algorithms import (
+    Algorithm,
+    AlgorithmComplexity,
+    AlgorithmFormInput,
+    AlgorithmInput,
+)
 from rubric import OnboardingRubric, Rubric, RubricCriterion
 
 app = FastAPI()
@@ -210,7 +215,7 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: RuleTemplate) -> R
                 id=inputs.id,
                 name=inputs.name,
                 description=inputs.description,
-                category=AlgorithmKind.BEHAVIORAL,
+                category=AlgorithmComplexity.COMPLEX,
                 inputs=[
                     AlgorithmInput(key="nodes", value=[inputs.nodes]),
                     AlgorithmInput(key="edges", value=[inputs.edges]),
