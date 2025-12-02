@@ -1,8 +1,37 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import ClassVar
+from typing import Any, ClassVar
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+)
+
+
+class AlgorithmInputType(str, Enum):
+    STRING = "string"
+    INTEGER = "integer"
+    KEY_VALUE = "key-value"
+
+
+class AlgorithmKeyValuePair(BaseModel):
+    key: str
+    value: list[str]
+
+
+class AlgorithmKeyValueType(BaseModel):
+    pairs: list[AlgorithmKeyValuePair] = []
+    key_label: str = Field(description="Label for outer key e.g. Pool-Name")
+    value_label: str = Field(description="Label for inner list items e.g. Lane-Name")
+
+
+TYPE_MAP: dict[AlgorithmInputType, type] = {
+    AlgorithmInputType.STRING: str,
+    AlgorithmInputType.INTEGER: int,
+    AlgorithmInputType.KEY_VALUE: AlgorithmKeyValueType,
+}
 
 
 class AlgorithmFormInput(BaseModel):
@@ -12,21 +41,29 @@ class AlgorithmFormInput(BaseModel):
     input_label: str
 
     # Input type e.g. string, number, key-value
-    input_type: str
+    input_type: AlgorithmInputType
 
     # Allow multiple inputs of this type
-    multiple: bool
+    multiple: bool = False
 
-    # Only if input_type = key-value
-    key_label: str
-    value_label: str
+    data: str | int | AlgorithmKeyValueType
 
+    @classmethod
+    @field_validator("data")
+    def _data_matches_declared_type(cls, v: Any, values: dict[str, Any]) -> Any:
+        expected_type = TYPE_MAP[values["input_type"]]
+        if not isinstance(v, expected_type):
+            raise TypeError(f"Input data must be of type {expected_type.__name__}")
 
-class AlgorithmInput(BaseModel):
-    """This class describes any elements required as input for the algorithm."""
+        match v:
+            case str() if not v.strip():  # empty string
+                raise ValueError("String input must not be empty")
+            case int() if v is None:  # number is null
+                raise ValueError("Integer input must not be null")
+            case AlgorithmKeyValueType() if not v.pairs:  # dict is empty
+                raise ValueError("Key-value input must contain at least one pair")
 
-    key: str = ""  # Only applicable to kv form type
-    value: list[str]
+        return v
 
 
 class AlgorithmResult(BaseModel):
@@ -39,7 +76,7 @@ class AlgorithmResult(BaseModel):
     fulfilled: bool | None = False
     confidence: float = 1.0
     problematic_elements: list[str] = []
-    inputs: list[AlgorithmInput] = []
+    inputs: list[AlgorithmFormInput] = []
 
 
 class AlgorithmComplexity(str, Enum):
@@ -51,7 +88,7 @@ class AlgorithmComplexity(str, Enum):
 class Algorithm(BaseModel, ABC):
     """Every algorithm must implement this class."""
 
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="ignore", strict=True)
 
     # These fields must be defined as class attributes with defaults in subclasses
     id: ClassVar[str]
@@ -64,7 +101,7 @@ class Algorithm(BaseModel, ABC):
     model_xml: str
 
     @abstractmethod
-    def analyze(self, inputs: list[AlgorithmInput] | None) -> AlgorithmResult:
+    def analyze(self, inputs: list[AlgorithmFormInput] | None) -> AlgorithmResult:
         """Analyze a given property based on inputs if available"""
         pass
 

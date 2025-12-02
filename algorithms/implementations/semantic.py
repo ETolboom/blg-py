@@ -9,7 +9,6 @@ from algorithms import (
     Algorithm,
     AlgorithmComplexity,
     AlgorithmFormInput,
-    AlgorithmInput,
     AlgorithmResult,
 )
 from utils import get_elements_by_type
@@ -23,7 +22,9 @@ class AtomicityCheck(Algorithm):
     algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.SIMPLE
     threshold: ClassVar[float] = 0.85
 
-    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
+    def analyze(
+        self, inputs: list[AlgorithmFormInput] | None = None
+    ) -> AlgorithmResult:
         tasks: list[tuple[str, str]] = get_elements_by_type(self.model_xml, "task")
         problematic_elements = []
         for label, element_id in tasks:
@@ -57,7 +58,9 @@ class ExactDuplicateTasks(Algorithm):
     algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.SIMPLE
     threshold: ClassVar[float] = 0.90
 
-    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
+    def analyze(
+        self, inputs: list[AlgorithmFormInput] | None = None
+    ) -> AlgorithmResult:
         tasks = get_elements_by_type(self.model_xml, "task")
 
         problematic_elements = []
@@ -100,7 +103,9 @@ class SemanticDuplicateTasks(Algorithm):
     algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.SIMPLE
     threshold: ClassVar[float] = 0.75
 
-    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
+    def analyze(
+        self, inputs: list[AlgorithmFormInput] | None = None
+    ) -> AlgorithmResult:
         tasks = get_elements_by_type(self.model_xml, "task")
 
         problematic_elements = []

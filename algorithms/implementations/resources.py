@@ -4,7 +4,9 @@ from algorithms import (
     Algorithm,
     AlgorithmComplexity,
     AlgorithmFormInput,
-    AlgorithmInput,
+    AlgorithmInputType,
+    AlgorithmKeyValuePair,
+    AlgorithmKeyValueType,
     AlgorithmResult,
 )
 from bpmn.bpmn import Bpmn
@@ -21,7 +23,12 @@ class PoolLaneCheck(Algorithm):
     algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.CONFIGURABLE
     threshold: ClassVar[float] = 0.70
 
-    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
+    key_label: ClassVar[str] = "Pool name"
+    value_label: ClassVar[str] = "Lane name"
+
+    def analyze(
+        self, inputs: list[AlgorithmFormInput] | None = None
+    ) -> AlgorithmResult:
         if inputs is None:
             # Analyze pools & lanes whilst taking reference xml as ground truth.
             inputs = []
@@ -29,13 +36,26 @@ class PoolLaneCheck(Algorithm):
 
             for pool in model.pools:
                 inputs.append(
-                    AlgorithmInput(
-                        key=pool.name,
+                    AlgorithmFormInput(
+                        input_label="Pool(s) and Lane(s)",
+                        input_type=AlgorithmInputType.KEY_VALUE,
+                        multiple=True,
                         # In case you have a pool with a single lane then technically a
                         # lane exists that has no name hence the type check.
-                        value=[
-                            lane.name for lane in pool.lanes if lane.name is not None
-                        ],
+                        data=AlgorithmKeyValueType(
+                            key_label=self.key_label,
+                            value_label=self.value_label,
+                            pairs=[
+                                AlgorithmKeyValuePair(
+                                    key=pool.name,
+                                    value=[
+                                        lane.name
+                                        for lane in pool.lanes
+                                        if lane.name is not None
+                                    ],
+                                )
+                            ],
+                        ),
                     )
                 )
 
@@ -59,7 +79,11 @@ class PoolLaneCheck(Algorithm):
         pools = [(pool.name, pool.id) for pool in model.pools]
         submission_pools = [pool[0] for pool in pools if pool[0] is not None]
 
-        reference_pools = [pool.key for pool in inputs]
+        reference_pools: list[str] = []
+        for v in inputs:
+            # TODO: Improper typing
+            for pool in v.data.pairs:
+                reference_pools.append(pool.key)
 
         if reference_pools and not submission_pools:
             return AlgorithmResult(
@@ -107,7 +131,9 @@ class PoolLaneCheck(Algorithm):
             submission_lane_labels = [
                 task.name for task in model.pools[submission_idx].lanes
             ]
-            reference_lane_labels = inputs[reference_idx].value
+
+            # TODO: Unsafe access
+            reference_lane_labels: list[str] = inputs[0].data.pairs[reference_idx].value
 
             if len(submission_lane_labels) != len(reference_lane_labels):
                 for task in model.pools[submission_idx].lanes:
@@ -146,9 +172,10 @@ class PoolLaneCheck(Algorithm):
         return [
             AlgorithmFormInput(
                 input_label="Pools and lanes",
-                input_type="key-value",
-                key_label="Pool name",
-                value_label="Lane name(s)",
+                input_type=AlgorithmInputType.KEY_VALUE,
+                data=AlgorithmKeyValueType(
+                    key_label=self.key_label, value_label=self.value_label, pairs=[]
+                ),
                 multiple=True,
             ),
         ]

@@ -6,7 +6,6 @@ from algorithms import (
     Algorithm,
     AlgorithmComplexity,
     AlgorithmFormInput,
-    AlgorithmInput,
     AlgorithmResult,
 )
 
@@ -19,7 +18,7 @@ class Synchronization(Algorithm):
     )
     algorithm_kind: ClassVar[AlgorithmComplexity] =  AlgorithmComplexity.SIMPLE
 
-    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
+    def analyze(self, inputs: list[AlgorithmFormInput] | None = None) -> AlgorithmResult:
         result = blg.analyze_safeness(self.model_xml)
         return AlgorithmResult(
             id=self.id,
@@ -45,7 +44,7 @@ class DeadActivity(Algorithm):
     )
     algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.SIMPLE
 
-    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
+    def analyze(self, inputs: list[AlgorithmFormInput] | None = None) -> AlgorithmResult:
         result = blg.analyze_dead_activities(self.model_xml)
         return AlgorithmResult(
             id=self.id,
@@ -71,7 +70,7 @@ class ProperCompletion(Algorithm):
     )
     algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.SIMPLE
 
-    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
+    def analyze(self, inputs: list[AlgorithmFormInput] | None = None) -> AlgorithmResult:
         result = blg.analyze_proper_completion(self.model_xml)
         return AlgorithmResult(
             id=self.id,
@@ -97,7 +96,7 @@ class OptionToComplete(Algorithm):
     )
     algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.SIMPLE
 
-    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
+    def analyze(self, inputs: list[AlgorithmFormInput] | None = None) -> AlgorithmResult:
         result = blg.analyze_option_to_complete(self.model_xml)
         return AlgorithmResult(
             id=self.id,
