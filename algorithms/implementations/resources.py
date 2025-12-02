@@ -4,7 +4,7 @@ from algorithms import (
     Algorithm,
     AlgorithmComplexity,
     AlgorithmFormInput,
-    AlgorithmInput,
+    AlgorithmInputType,
     AlgorithmResult,
 )
 from bpmn.bpmn import Bpmn
@@ -21,7 +21,9 @@ class PoolLaneCheck(Algorithm):
     algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.CONFIGURABLE
     threshold: ClassVar[float] = 0.70
 
-    def analyze(self, inputs: list[AlgorithmInput] | None = None) -> AlgorithmResult:
+    def analyze(
+        self, inputs: list[AlgorithmFormInput] | None = None
+    ) -> AlgorithmResult:
         if inputs is None:
             # Analyze pools & lanes whilst taking reference xml as ground truth.
             inputs = []
@@ -29,13 +31,19 @@ class PoolLaneCheck(Algorithm):
 
             for pool in model.pools:
                 inputs.append(
-                    AlgorithmInput(
-                        key=pool.name,
+                    AlgorithmFormInput(
+                        input_label="Pool name",
+                        input_type=AlgorithmInputType.KEY_VALUE,
+                        multiple=True,
                         # In case you have a pool with a single lane then technically a
                         # lane exists that has no name hence the type check.
-                        value=[
-                            lane.name for lane in pool.lanes if lane.name is not None
-                        ],
+                        data={
+                            pool.name: [
+                                lane.name
+                                for lane in pool.lanes
+                                if lane.name is not None
+                            ]
+                        },
                     )
                 )
 
@@ -146,7 +154,7 @@ class PoolLaneCheck(Algorithm):
         return [
             AlgorithmFormInput(
                 input_label="Pools and lanes",
-                input_type="key-value",
+                input_type=AlgorithmInputType.KEY_VALUE,
                 key_label="Pool name",
                 value_label="Lane name(s)",
                 multiple=True,

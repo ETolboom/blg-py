@@ -16,7 +16,6 @@ from algorithms import (
     Algorithm,
     AlgorithmComplexity,
     AlgorithmFormInput,
-    AlgorithmInput,
 )
 from rubric import OnboardingRubric, Rubric, RubricCriterion
 
@@ -217,8 +216,8 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: RuleTemplate) -> R
                 description=inputs.description,
                 category=AlgorithmComplexity.COMPLEX,
                 inputs=[
-                    AlgorithmInput(key="nodes", value=[inputs.nodes]),
-                    AlgorithmInput(key="edges", value=[inputs.edges]),
+                    AlgorithmFormInput(key="nodes", value=[inputs.nodes]),
+                    AlgorithmFormInput(key="edges", value=[inputs.edges]),
                 ],
                 fulfilled=True,
                 confidence=1.0,
@@ -240,7 +239,9 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: RuleTemplate) -> R
 
 
 @app.post("/rubric/criteria/{algorithm_id}")
-async def update_criteria(algorithm_id: str, inputs: list[AlgorithmInput]) -> Rubric:
+async def update_criteria(
+    algorithm_id: str, inputs: list[AlgorithmFormInput]
+) -> Rubric:
     global rubric
 
     try:
