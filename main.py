@@ -3,7 +3,6 @@ import io
 import json
 import os
 import sys
-from typing import Optional, Union
 
 import pandas as pd
 import uvicorn
@@ -27,10 +26,10 @@ origins = ["http://localhost:5173"]
 base_path = ""
 
 
-def get_rubric_from_disk() -> Optional[Rubric]:
+def get_rubric_from_disk() -> Rubric | None:
     if os.path.exists(os.path.join(base_path, "rubric.json")):
         try:
-            with open(os.path.join(base_path, "rubric.json"), "r") as file:
+            with open(os.path.join(base_path, "rubric.json")) as file:
                 rubric_data = json.load(file)
             print("Rubric loaded successfully")
             return Rubric(**rubric_data)
@@ -62,7 +61,7 @@ async def get_submissions_list() -> list[dict]:
 @app.get("/submissions/export")
 async def export_submission(filename: str) -> Response:
     submission = os.path.join(base_path, "submissions", filename + ".json")
-    with open(submission, "r", encoding="utf-8") as f:
+    with open(submission, encoding="utf-8") as f:
         submission_json = f.read()
 
     try:
@@ -92,7 +91,7 @@ async def export_all_submission() -> Response:
     with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
         for submission in submissions:
             submission_path = os.path.join(base_path, "submissions", submission)
-            with open(submission_path, "r", encoding="utf-8") as f:
+            with open(submission_path, encoding="utf-8") as f:
                 submission_json = f.read()
 
             try:
@@ -127,7 +126,7 @@ async def get_submission(filename: str) -> Response:
             raise HTTPException(status_code=404, detail="Reference XML not found")
 
     submissions_path = os.path.join(base_path, "submissions", filename)
-    with open(submissions_path, "r") as model:
+    with open(submissions_path) as model:
         return Response(content=model.read(), media_type="application/xml")
 
 
@@ -178,7 +177,7 @@ async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric) -> Rubri
     rubric = new_rubric
 
     # Write new rubric to file so it persists
-    with open(os.path.join(base_path, "rubric.json"), "wt") as f:
+    with open(os.path.join(base_path, "rubric.json"), "w") as f:
         f.write(new_rubric.model_dump_json())
 
     return new_rubric
@@ -217,8 +216,16 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: RuleTemplate) -> R
                 description=inputs.description,
                 category=AlgorithmComplexity.COMPLEX,
                 inputs=[
-                    AlgorithmFormInput(input_label="nodes", input_type=AlgorithmInputType.STRING, data=inputs.nodes),
-                    AlgorithmFormInput(input_label="edges", input_type=AlgorithmInputType.STRING, data=inputs.edges),
+                    AlgorithmFormInput(
+                        input_label="nodes",
+                        input_type=AlgorithmInputType.STRING,
+                        data=inputs.nodes,
+                    ),
+                    AlgorithmFormInput(
+                        input_label="edges",
+                        input_type=AlgorithmInputType.STRING,
+                        data=inputs.edges,
+                    ),
                 ],
                 fulfilled=True,
                 confidence=1.0,
@@ -229,7 +236,7 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: RuleTemplate) -> R
         )
 
         # Write new rubric to file so it persists
-        with open(os.path.join(base_path, "rubric.json"), "wt") as f:
+        with open(os.path.join(base_path, "rubric.json"), "w") as f:
             f.write(rubric.model_dump_json())
 
         return rubric
@@ -279,7 +286,7 @@ async def update_criteria(
         )
 
         # Write new rubric to file so it persists
-        with open(os.path.join(base_path, "rubric.json"), "wt") as f:
+        with open(os.path.join(base_path, "rubric.json"), "w") as f:
             f.write(rubric.model_dump_json())
 
         return rubric
@@ -303,7 +310,7 @@ async def update_rubric_description(req: Request) -> None:
         if rubric and rubric.assignment:
             rubric.assignment.description = description
 
-        with open(os.path.join(base_path, "rubric.json"), "wt") as f:
+        with open(os.path.join(base_path, "rubric.json"), "w") as f:
             f.write(rubric.model_dump_json())
 
 
@@ -322,7 +329,7 @@ async def update_submission(filename: str, criteria: list[RubricCriterion]) -> N
     submission_lock = asyncio.Lock()
 
     async with submission_lock:
-        with open(submission, "r", encoding="utf-8") as f:
+        with open(submission, encoding="utf-8") as f:
             submission_json = f.read()
 
         try:
@@ -334,26 +341,30 @@ async def update_submission(filename: str, criteria: list[RubricCriterion]) -> N
 
         parsed_rubric.criteria = criteria
 
-        with open(submission, "wt", encoding="utf-8") as f:
+        with open(submission, "w", encoding="utf-8") as f:
             f.write(parsed_rubric.model_dump_json())
 
 
 @app.post("/algorithms/analyze", response_model=None)
-async def analyze_submission(filename: str) -> Union[Response, Rubric]:
+async def analyze_submission(filename: str) -> Response | Rubric:
     if filename == "":
         raise HTTPException(status_code=404, detail="No filename provided")
+
+    if filename == "Reference":
+        global rubric
+        return rubric
 
     submission = os.path.join(base_path, "submissions", filename)
 
     if os.path.exists(submission + ".json"):
         # We already have an analyzed result
-        with open(submission + ".json", "r") as file:
+        with open(submission + ".json") as file:
             return Response(content=file.read(), media_type="application/json")
 
     if not os.path.exists(submission):
         raise HTTPException(status_code=404, detail="Submission not found")
 
-    with open(submission, "r", encoding="utf-8") as f:
+    with open(submission, encoding="utf-8") as f:
         model_xml = f.read()
 
     manager = algorithms.manager.get_manager(model_xml)
@@ -381,7 +392,7 @@ async def analyze_submission(filename: str) -> Union[Response, Rubric]:
         assignment=None,
     )
 
-    with open(submission + ".json", "wt") as f:
+    with open(submission + ".json", "w") as f:
         f.write(parsed_submission.model_dump_json())
 
     return parsed_submission
@@ -396,7 +407,7 @@ class NodeData(BaseModel):
 class Node(BaseModel):
     key: str
     data: NodeData
-    children: Optional[list["Node"]] = None
+    children: list["Node"] | None = None
 
 
 @app.post("/algorithms/analyze/all")

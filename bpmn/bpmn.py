@@ -1,4 +1,5 @@
 from xml.etree import ElementTree
+
 from bpmn.struct import Pool, PoolElement, parse_lane_set
 
 
@@ -75,8 +76,9 @@ class Bpmn:
         tasks: list[str] = []
         for pool in self.pools:
             for element in pool.elements:
-                if (element.name != "task") or (element.label == ""):
-                    continue
-                tasks.append(element.label)
+                # Element is abstract "task" or ServiceTask, SendTask, XYZTask, etc.
+                if (element.name == "task") or (element.label.endswith("Task")):
+                    tasks.append(element.label)
+                continue
 
         return tasks

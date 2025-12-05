@@ -11,7 +11,7 @@ from algorithms import (
     AlgorithmFormInput,
     AlgorithmResult,
 )
-from utils import get_elements_by_type
+from utils import extract_all_tasks, get_elements_by_type
 from utils.similarity import create_similarity_matrix
 
 
@@ -25,7 +25,8 @@ class AtomicityCheck(Algorithm):
     def analyze(
         self, inputs: list[AlgorithmFormInput] | None = None
     ) -> AlgorithmResult:
-        tasks: list[tuple[str, str]] = get_elements_by_type(self.model_xml, "task")
+        tasks: list[tuple[str, str]] = extract_all_tasks(self.model_xml)
+
         problematic_elements = []
         for label, element_id in tasks:
             single_action = check_single_action(label)
@@ -61,7 +62,10 @@ class ExactDuplicateTasks(Algorithm):
     def analyze(
         self, inputs: list[AlgorithmFormInput] | None = None
     ) -> AlgorithmResult:
-        tasks = get_elements_by_type(self.model_xml, "task")
+        tasks: list[tuple[str, str]] = extract_all_tasks(self.model_xml)
+
+        if len(tasks) == 0:
+            raise Exception("Cannot identify exact duplicates: no tasks found")
 
         problematic_elements = []
 
@@ -106,7 +110,9 @@ class SemanticDuplicateTasks(Algorithm):
     def analyze(
         self, inputs: list[AlgorithmFormInput] | None = None
     ) -> AlgorithmResult:
-        tasks = get_elements_by_type(self.model_xml, "task")
+        tasks: list[tuple[str, str]] = extract_all_tasks(self.model_xml)
+        if len(tasks) == 0:
+            raise Exception("Cannot identify exact duplicates: no tasks found")
 
         problematic_elements = []
 
@@ -167,6 +173,7 @@ def find_semantic_duplicates(
 ) -> dict:
     # Extract just task label
     labels = [t[0] for t in tuples_list]
+    print(labels)
 
     similarity_matrix = create_similarity_matrix(labels, labels, self_similarity=True)
 
