@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from enum import Enum
+from idlelib.runscript import ScriptBinding
 from xml.etree import ElementTree
 
 
@@ -33,7 +36,23 @@ def get_elements_by_type(model_xml: str, element_type: str) -> list[tuple[str, s
     return labels
 
 
-def extract_all_tasks(model_xml: str, allow_abstract=True) -> list[tuple[str, str]]:
+class TaskType(str, Enum):
+    SERVICE = "serviceTask"
+    SEND = "sendTask"
+    RECEIVE = "receiveTask"
+    USER = "userTask"
+    MANUAL = "manualTask"
+    BUSINESS_RULE = "businessRuleTask"
+    SCRIPT = "scriptTask"
+    ABSTRACT = "task"
+
+@dataclass
+class ExtractedTask:
+    name: str
+    id: str
+    task_type: str
+
+def extract_all_tasks(model_xml: str, allow_abstract: bool = True) -> list[ExtractedTask]:
     """
     Find all tasks in a model.
 
@@ -46,24 +65,17 @@ def extract_all_tasks(model_xml: str, allow_abstract=True) -> list[tuple[str, st
 
     # Tasks with a specific type are different elements in BPMN
     # See Table 12.9 of the BPMN2.0.2 spec (P415)
-    task_types = [
-        "serviceTask",
-        "sendTask",
-        "receiveTask",
-        "userTask",
-        "manualTask",
-        "businessRuleTask",
-        "scriptTask",
-    ]
-
     if allow_abstract:
-        task_types.append("task")
+        task_types: list[str] = [member.value for member in TaskType]
+    else:
+        task_types: list[str] = [member.value for member in TaskType if member != TaskType.ABSTRACT]
 
-    tasks: list[tuple[str, str]] = []
+    tasks: list[ExtractedTask] = []
 
     for task_type in task_types:
         try:
-            tasks.extend(get_elements_by_type(model_xml, task_type))
+            for element_name, element_id in get_elements_by_type(model_xml, task_type):
+                tasks.append(ExtractedTask(element_name, element_id, task_type))        
         except ValueError as e:
             print(f"Could not find tasks with type {task_type}: {e}")
             # Element type not found

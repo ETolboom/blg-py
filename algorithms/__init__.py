@@ -14,12 +14,20 @@ class AlgorithmInputType(str, Enum):
     STRING = "string"
     INTEGER = "integer"
     KEY_VALUE = "key-value"
-
+    SELECTION = "selection"
 
 class AlgorithmKeyValuePair(BaseModel):
     key: str
     value: list[str]
 
+class AlgorithmSelectionPair(BaseModel):
+    label: str
+    type: str
+
+class AlgorithmSelectionType(BaseModel):
+    placeholder: str
+    accepted_values: list[str]
+    pairs: list[AlgorithmSelectionPair]
 
 class AlgorithmKeyValueType(BaseModel):
     pairs: list[AlgorithmKeyValuePair] = []
@@ -30,7 +38,8 @@ class AlgorithmKeyValueType(BaseModel):
 TYPE_MAP: dict[AlgorithmInputType, type] = {
     AlgorithmInputType.STRING: str,
     AlgorithmInputType.INTEGER: int,
-    AlgorithmInputType.KEY_VALUE: AlgorithmKeyValueType,
+    AlgorithmInputType.KEY_VALUE: AlgorithmKeyValuePair,
+    AlgorithmInputType.SELECTION: AlgorithmSelectionType,
 }
 
 
@@ -46,7 +55,7 @@ class AlgorithmFormInput(BaseModel):
     # Allow multiple inputs of this type
     multiple: bool = False
 
-    data: str | int | AlgorithmKeyValueType
+    data: str | int | AlgorithmKeyValueType | AlgorithmSelectionType
 
     @classmethod
     @field_validator("data")
@@ -62,6 +71,8 @@ class AlgorithmFormInput(BaseModel):
                 raise ValueError("Integer input must not be null")
             case AlgorithmKeyValueType() if not v.pairs:  # dict is empty
                 raise ValueError("Key-value input must contain at least one pair")
+            case AlgorithmSelectionType() if not v.accepted_values:
+                raise ValueError("Possible selection must contain at least one possible value")
 
         return v
 

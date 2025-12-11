@@ -11,7 +11,7 @@ from algorithms import (
     AlgorithmFormInput,
     AlgorithmResult,
 )
-from utils import extract_all_tasks, get_elements_by_type
+from utils import extract_all_tasks, get_elements_by_type, ExtractedTask
 from utils.similarity import create_similarity_matrix
 
 
@@ -25,14 +25,14 @@ class AtomicityCheck(Algorithm):
     def analyze(
         self, inputs: list[AlgorithmFormInput] | None = None
     ) -> AlgorithmResult:
-        tasks: list[tuple[str, str]] = extract_all_tasks(self.model_xml)
+        tasks: list[ExtractedTask] = extract_all_tasks(self.model_xml)
 
         problematic_elements = []
-        for label, element_id in tasks:
-            single_action = check_single_action(label)
-            atomicity = atomicity_score(label)
+        for task in tasks:
+            single_action = check_single_action(task.name)
+            atomicity = atomicity_score(task.name)
             if not (single_action or atomicity >= self.threshold):
-                problematic_elements.append(element_id)
+                problematic_elements.append(task.id)
 
         return AlgorithmResult(
             id=self.id,
@@ -62,21 +62,21 @@ class ExactDuplicateTasks(Algorithm):
     def analyze(
         self, inputs: list[AlgorithmFormInput] | None = None
     ) -> AlgorithmResult:
-        tasks: list[tuple[str, str]] = extract_all_tasks(self.model_xml)
+        tasks: list[ExtractedTask] = extract_all_tasks(self.model_xml)
 
         if len(tasks) == 0:
             raise Exception("Cannot identify exact duplicates: no tasks found")
 
         problematic_elements = []
 
-        def parse_duplicates(duplicates):
+        def parse_duplicates(duplicates: dict[str, list[ExtractedTask]]):
             for key, group in duplicates.items():
                 # print(f"Duplicate for {key}: {group}")
-                pair_one_element_id = group[0][1]
+                pair_one_element_id = group[0].id
                 if pair_one_element_id not in problematic_elements:
                     problematic_elements.append(pair_one_element_id)
 
-                pair_two_element_id = group[1][1]
+                pair_two_element_id = group[1].id
                 if pair_two_element_id not in problematic_elements:
                     problematic_elements.append(pair_two_element_id)
 
@@ -110,7 +110,7 @@ class SemanticDuplicateTasks(Algorithm):
     def analyze(
         self, inputs: list[AlgorithmFormInput] | None = None
     ) -> AlgorithmResult:
-        tasks: list[tuple[str, str]] = extract_all_tasks(self.model_xml)
+        tasks: list[ExtractedTask] = extract_all_tasks(self.model_xml)
         if len(tasks) == 0:
             raise Exception("Cannot identify exact duplicates: no tasks found")
 
@@ -119,11 +119,11 @@ class SemanticDuplicateTasks(Algorithm):
         def parse_duplicates(duplicates):
             for key, group in duplicates.items():
                 # print(f"Duplicate for {key}: {group}")
-                pair_one_element_id = group[0][1]
+                pair_one_element_id = group[0].id
                 if pair_one_element_id not in problematic_elements:
                     problematic_elements.append(pair_one_element_id)
 
-                pair_two_element_id = group[1][1]
+                pair_two_element_id = group[1].id
                 if pair_two_element_id not in problematic_elements:
                     problematic_elements.append(pair_two_element_id)
 
@@ -169,11 +169,10 @@ def atomicity_score(label: str) -> float:
 
 
 def find_semantic_duplicates(
-    tuples_list: list[tuple[str, str]], threshold: float
+    extracted_tasks: list[ExtractedTask], threshold: float
 ) -> dict:
     # Extract just task label
-    labels = [t[0] for t in tuples_list]
-    print(labels)
+    labels = [t.name for t in extracted_tasks]
 
     similarity_matrix = create_similarity_matrix(labels, labels, self_similarity=True)
 
@@ -197,43 +196,43 @@ def find_semantic_duplicates(
         pair_key = (min(idx1, idx2), max(idx1, idx2))
 
         if idx1 not in used_indices and idx2 not in used_indices:
-            if score >= threshold and pair_key not in processed_pairs:
+            if idx1 != idx2 and score >= threshold and pair_key not in processed_pairs:
                 used_indices.add(idx1)
                 used_indices.add(idx2)
                 processed_pairs.add(pair_key)
                 duplicate_pairs.append((idx1, idx2, score))
 
     for idx1, idx2, _ in duplicate_pairs:
-        original = tuples_list[idx1]
-        group = [original, tuples_list[idx2]]
-        groups[original[0]] = group
+        original = extracted_tasks[idx1]
+        group = [original, extracted_tasks[idx2]]
+        groups[original.id] = group
 
     return groups
 
 
-def find_fuzzy_duplicates(tuples_list: list[tuple[str, str]], threshold: float) -> dict:
+def find_fuzzy_duplicates(tasks: list[ExtractedTask], threshold: float) -> dict:
     groups = defaultdict(list)
     processed = set()
     threshold *= 100  # Thefuzz using values between 0-100
 
-    for i, current_tuple in enumerate(tuples_list):
+    for i, current_task in enumerate(tasks):
         if i in processed:
             continue
 
-        current_key = current_tuple[0]
-        group = [current_tuple]
+        current_key = current_task.id
+        group = [current_task]
         processed.add(i)
 
         # Compare with remaining tuples
-        for j, other_tuple in enumerate(tuples_list[i + 1 :], i + 1):
+        for j, other_task in enumerate(tasks[i + 1 :], i + 1):
             if j in processed:
                 continue
 
-            other_key = other_tuple[0]
+            other_key = other_task.id
             similarity = fuzz.ratio(current_key, other_key)
 
             if similarity >= threshold:
-                group.append(other_tuple)
+                group.append(other_task)
                 processed.add(j)
 
         if len(group) > 1:  # Only keep groups with duplicates
