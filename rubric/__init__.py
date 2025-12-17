@@ -1,5 +1,4 @@
 import io
-from typing import Optional
 
 import pandas as pd
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side

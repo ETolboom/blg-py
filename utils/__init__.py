@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from enum import Enum
-from idlelib.runscript import ScriptBinding
 from xml.etree import ElementTree
 
 

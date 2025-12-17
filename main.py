@@ -187,7 +187,7 @@ class RuleTemplate(BaseModel):
     id: str
     name: str
     description: str
-    maxPoints: int
+    maxPoints: float
     nodes: str
     edges: str
 
