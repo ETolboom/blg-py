@@ -15,8 +15,9 @@ from algorithms import (
     Algorithm,
     AlgorithmComplexity,
     AlgorithmFormInput,
-    AlgorithmInputType,
+    AlgorithmInputType, AlgorithmResult,
 )
+from algorithms.implementations.behavioral import WorkflowData, BehavioralRuleCheck
 from rubric import OnboardingRubric, Rubric, RubricCriterion
 
 app = FastAPI()
@@ -192,10 +193,18 @@ class RuleTemplate(BaseModel):
     edges: str
 
 
+@app.post("/rubric/criteria/behavioral/analyze")
+def analyze_behavioral_criteria(data: WorkflowData) -> AlgorithmResult:
+    global rubric
+    try:
+        alg = BehavioralRuleCheck(model_xml=rubric.assignment.reference_xml)
+        return alg.check_behavior(workflow=data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @app.post("/rubric/criteria/behavioral/{behavioral_id}")
 async def add_behavioral_criteria(behavioral_id: str, inputs: RuleTemplate) -> Rubric:
     global rubric
-
     try:
         # Prevent any duplicates by removing old instances of the algorithm.
         index = next(
@@ -244,6 +253,7 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: RuleTemplate) -> R
         raise HTTPException(
             status_code=500, detail=f"Failed to update criteria: {str(e)}"
         )
+
 
 
 @app.post("/rubric/criteria/{algorithm_id}")
