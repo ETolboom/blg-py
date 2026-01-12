@@ -2,6 +2,7 @@
 cache/
 example/submissions
 example/rubric.json
+example/templates
 target/
 __pycache__
 .DS_Store

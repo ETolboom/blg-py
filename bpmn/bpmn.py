@@ -73,7 +73,7 @@ class Bpmn:
             parsed_pool.elements = pool_elements
             self.pools.append(parsed_pool)
 
-    def find_task(self, task_label: str, match_threshold: float = 0.8) -> tuple[PoolElement, float] | None:
+    def find_task(self, task_label: str, match_threshold: float = 0.6) -> tuple[PoolElement, float] | None:
         # Collect all elements with labels
         elements_with_labels = []
         labels = []

@@ -146,8 +146,11 @@ class MatchDetail:
     distance: int
     ideal_distance: int
     max_distance: int
-    is_correct: bool  # True if match_score meets threshold
-    is_ideal_distance: bool  # True if distance == ideal_distance
+    minimal_match_threshold: float  # Minimum acceptable threshold (default: 0.6)
+    ideal_match_threshold: float    # Ideal threshold (default: 0.8)
+    is_correct: bool                # True if match_score >= minimal_match_threshold
+    is_ideal_distance: bool         # True if distance == ideal_distance
+    is_ideal_match: bool            # True if match_score >= ideal_match_threshold
 
 
 class BehavioralResult(BaseModel):
@@ -178,6 +181,8 @@ class TraversalContext:
     total_score: float = 0.0        # Accumulated penalty score
     ideal_distance: int = 1         # Updated by followedBy nodes
     max_distance: int = 2           # Updated by followedBy nodes
+    minimal_match_threshold: float = 0.6  # Minimum acceptable match score
+    ideal_match_threshold: float = 0.8    # Ideal match score
     visited_nodes: set[str] = field(default_factory=set)  # Cycle detection
 
     def clone(self) -> "TraversalContext":
@@ -190,6 +195,8 @@ class TraversalContext:
             total_score=self.total_score,
             ideal_distance=self.ideal_distance,
             max_distance=self.max_distance,
+            minimal_match_threshold=self.minimal_match_threshold,
+            ideal_match_threshold=self.ideal_match_threshold,
             visited_nodes=self.visited_nodes.copy()
         )
 
@@ -198,7 +205,7 @@ class TraversalContext:
         self.ideal_distance = node.data.idealDistance or 1
         self.max_distance = node.data.maxDistance or 2
 
-    def apply_match_result(self, bpmn_result: tuple, workflow_node: GraphNode, match_threshold: float = 0.8):
+    def apply_match_result(self, bpmn_result: tuple, workflow_node: GraphNode):
         """Apply BPMN match result to context"""
         visit_count, bpmn_elem, match_score = bpmn_result
 
@@ -216,8 +223,11 @@ class TraversalContext:
             distance=visit_count,
             ideal_distance=self.ideal_distance,
             max_distance=self.max_distance,
-            is_correct=match_score >= match_threshold,
-            is_ideal_distance=visit_count == self.ideal_distance
+            minimal_match_threshold=self.minimal_match_threshold,
+            ideal_match_threshold=self.ideal_match_threshold,
+            is_correct=match_score >= self.minimal_match_threshold,
+            is_ideal_distance=visit_count == self.ideal_distance,
+            is_ideal_match=match_score >= self.ideal_match_threshold
         )
         self.match_details.append(match_detail)
 
@@ -409,21 +419,27 @@ class BehavioralRuleCheck(Algorithm):
                 max_distance=context.max_distance, match_threshold=0.8
             )
 
-    def _merge_contexts(self, branch_results: list[TraversalContext]) -> TraversalContext:
-        """Merge multiple branch contexts into one"""
+    def _merge_contexts(self, branch_results: list[TraversalContext], base_score: float = 0.0) -> TraversalContext:
+        """Merge multiple branch contexts into one
+
+        Args:
+            branch_results: List of contexts from each branch
+            base_score: Score accumulated before divergence (to avoid double-counting)
+        """
         # Use the last branch's context as base (it completed the convergence)
         merged = branch_results[-1].clone()
 
         # Merge match scores, details, and scores from all branches
         merged.match_scores = []
         merged.match_details = []
-        merged.total_score = 0.0
+        merged.total_score = base_score  # Start with base score
         merged.visited_nodes = set()
 
         for ctx in branch_results:
             merged.match_scores.extend(ctx.match_scores)
             merged.match_details.extend(ctx.match_details)
-            merged.total_score += ctx.total_score
+            # Add delta score (score added during branch traversal)
+            merged.total_score += (ctx.total_score - base_score)
             merged.visited_nodes.update(ctx.visited_nodes)
 
         return merged
@@ -504,8 +520,11 @@ class BehavioralRuleCheck(Algorithm):
                         distance=0,  # Already at position
                         ideal_distance=context.ideal_distance,
                         max_distance=context.max_distance,
+                        minimal_match_threshold=context.minimal_match_threshold,
+                        ideal_match_threshold=context.ideal_match_threshold,
                         is_correct=True,
-                        is_ideal_distance=True  # Distance 0 is better than ideal
+                        is_ideal_distance=True,  # Distance 0 is better than ideal
+                        is_ideal_match=True  # Score 1.0 meets ideal threshold
                     )
                     context.match_details.append(match_detail)
 
@@ -514,7 +533,31 @@ class BehavioralRuleCheck(Algorithm):
 
                 bpmn_result = self._find_bpmn_match(context, next_node, model)
                 if not bpmn_result[1]:  # No match found
-                    raise Exception(f"Could not find BPMN element for {next_node.data.label}")
+                    print(f"Problematic: Could not find BPMN element for '{next_node.data.label}'")
+
+                    # Create a problematic match detail with score 0
+                    match_detail = MatchDetail(
+                        workflow_node_id=next_node.id,
+                        workflow_label=next_node.data.label,
+                        bpmn_element_id="NOT_FOUND",
+                        bpmn_label="NOT_FOUND",
+                        match_score=0.0,
+                        distance=999,  # Invalid distance
+                        ideal_distance=context.ideal_distance,
+                        max_distance=context.max_distance,
+                        minimal_match_threshold=context.minimal_match_threshold,
+                        ideal_match_threshold=context.ideal_match_threshold,
+                        is_correct=False,
+                        is_ideal_distance=False,
+                        is_ideal_match=False
+                    )
+                    context.match_details.append(match_detail)
+                    context.match_scores.append(0.0)
+
+                    # Don't award points for unmatched elements
+                    # Continue to next node without raising exception
+                    context.workflow_pos = next_node
+                    continue
 
                 visit_count, bpmn_elem, match_score = bpmn_result
                 print(f"Found BPMN match '{bpmn_elem.label}' at distance {visit_count} with score {match_score:.3f}")
@@ -560,6 +603,11 @@ class BehavioralRuleCheck(Algorithm):
         """All branches must reach connector"""
 
         print(f"\n=== Handling AND branches ({len(branches)} branches) ===")
+
+        # Save the score before divergence to avoid double-counting
+        base_score = context.total_score
+        print(f"Score before divergence: {base_score}")
+
         branch_results = []
 
         for i, branch_start in enumerate(branches):
@@ -574,12 +622,13 @@ class BehavioralRuleCheck(Algorithm):
             result_ctx = self._traverse_from(branch_ctx, model, connectors, workflow)
             branch_results.append(result_ctx)
 
-            print(f"Branch {i + 1} complete with {len(result_ctx.match_scores)} matches")
+            print(f"Branch {i + 1} complete with {len(result_ctx.match_scores)} matches, score: {result_ctx.total_score}")
 
-        # Merge results
+        # Merge results with base score to avoid double-counting
         print(f"\n--- Merging {len(branch_results)} AND branch results ---")
-        merged_ctx = self._merge_contexts(branch_results)
+        merged_ctx = self._merge_contexts(branch_results, base_score)
         merged_ctx.workflow_pos = self._get_node_by_id(connector.node_id, workflow)
+        print(f"Merged score: {merged_ctx.total_score}")
 
         # Continue past connector
         print(f"Continuing past AND connector...")
@@ -666,8 +715,11 @@ class BehavioralRuleCheck(Algorithm):
             distance=0,  # Starting position
             ideal_distance=1,
             max_distance=2,
-            is_correct=start_score >= 0.8,
-            is_ideal_distance=True
+            minimal_match_threshold=0.6,
+            ideal_match_threshold=0.8,
+            is_correct=start_score >= 0.6,
+            is_ideal_distance=True,
+            is_ideal_match=start_score >= 0.8
         )
 
         initial_context = TraversalContext(
@@ -693,10 +745,13 @@ class BehavioralRuleCheck(Algorithm):
         confidence = final_context.confidence
         total_matches = len(final_context.match_scores)
 
+        # Round total_score to avoid floating point errors (e.g., 1.20000002 -> 1.2)
+        total_score_rounded = round(final_context.total_score, 2)
+
         print(f"\nFinal Results:")
         print(f"  - Total matches: {total_matches}")
         print(f"  - Overall confidence: {confidence:.3f}")
-        print(f"  - Total score: {final_context.total_score}")
+        print(f"  - Total score: {total_score_rounded}")
 
         return BehavioralResult(
             id=self.id,
@@ -708,7 +763,7 @@ class BehavioralRuleCheck(Algorithm):
             problematic_elements=[],
             inputs=[],
             match_details=final_context.match_details,
-            total_score=final_context.total_score,
+            total_score=total_score_rounded,
             total_matches=total_matches
         )
 
