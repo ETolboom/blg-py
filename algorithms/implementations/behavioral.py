@@ -1,7 +1,11 @@
 from typing import ClassVar, Optional
+from dataclasses import dataclass, field
 
 from algorithms import Algorithm, AlgorithmComplexity, AlgorithmFormInput, AlgorithmResult
 from pydantic import BaseModel
+
+from bpmn.bpmn import Bpmn
+from bpmn.struct import PoolElement
 
 
 class NodeHandle(BaseModel):
@@ -75,6 +79,17 @@ class WorkflowData(BaseModel):
     nodes: list[GraphNode]
     edges: list[Edge]
 
+    def next(self, node: GraphNode) -> list[GraphNode]:
+        outgoing_nodes: list[GraphNode] = []
+        for edge in self.edges:
+            if edge.source == node.id:
+                # Find the target node by ID
+                for target_node in self.nodes:
+                    if target_node.id == edge.target:
+                        outgoing_nodes.append(target_node)
+                        break
+        return outgoing_nodes
+
 
 class DecisionTreeNode(BaseModel):
     node_id: str
@@ -92,176 +107,163 @@ class DecisionTreeNode(BaseModel):
     # For tracking problematic paths
     is_problematic: bool = False
 
-def process_edges(edges: list[Edge], nodes: list[GraphNode]) -> list[Edge]:
-    # Create node lookup
-    node_map = {node.id: node for node in nodes}
 
-    processed_edges = []
-    for edge in edges:
-        # Check if this is a gateway edge (sourceHandle like "outcome-0")
-        if edge.sourceHandle and edge.sourceHandle.startswith("outcome-"):
-            source_node = node_map.get(edge.source)
-            if source_node and source_node.data.gatewayOutcomes:
-                # Extract index from sourceHandle (e.g., "outcome-0" -> 0)
-                try:
-                    outcome_idx = int(edge.sourceHandle.split("-")[1])
-                    if 0 <= outcome_idx < len(source_node.data.gatewayOutcomes):
-                        edge.outcome = source_node.data.gatewayOutcomes[outcome_idx]
-                except (IndexError, ValueError):
-                    pass
+class ParsedTree(BaseModel):
+    total_points: int
+    nodes: list[DecisionTreeNode]
 
-        processed_edges.append(edge)
 
-    return processed_edges
+class ConnectorNode(BaseModel):
+    node_id: str
+    node_type: str
 
-def build_decision_tree(nodes: list[GraphNode], edges: list[Edge]) -> Optional[DecisionTreeNode]:
-    # Create a mapping of node_id to GraphNode
-    node_map = {node.id: node for node in nodes}
+    # There are only 'XOR' and 'AND' nodes at the moment which have 2 inputs.
+    # Every time we pass by a node successfully we increment
+    visit_count: int = 0
 
-    # Create edge lookup structures
-    # outgoing_edges: source_node_id -> list of edges
-    outgoing_edges: dict[str, list[Edge]] = {}
-    for edge in edges:
-        if edge.source not in outgoing_edges:
-            outgoing_edges[edge.source] = []
-        outgoing_edges[edge.source].append(edge)
+    minimum_visit_count: int
 
-    # Find start node (first element node or node with no incoming connections)
-    # For now, we'll use the first elementCheck node as the start
-    start_node = None
-    for node in nodes:
-        if node.type == "elementCheck":
-            start_node = node
-            break
+    # Track which branches have visited this connector
+    visited_by_branches: set[str] = set()
 
-    if not start_node:
-        return None
+    def register_visit(self, branch_id: str) -> bool:
+        """Register a branch visit, return True if convergence complete"""
+        if branch_id not in self.visited_by_branches:
+            self.visited_by_branches.add(branch_id)
+            self.visit_count += 1
 
-    # Build tree recursively
-    visited = set()
-    return build_tree_recursive(start_node, node_map, outgoing_edges, visited)
+        return self.visit_count >= self.minimum_visit_count
 
-def build_tree_recursive(
-    graph_node: GraphNode,
-    node_map: dict[str, GraphNode],
-    outgoing_edges: dict[str, list[Edge]],
-    visited: set[str]
-) -> Optional[DecisionTreeNode]:
-    """Recursively build decision tree from graph nodes"""
 
-    # Prevent infinite loops
-    if graph_node.id in visited:
-        return None
-    visited.add(graph_node.id)
+@dataclass
+class MatchDetail:
+    """Detailed information about a single match"""
+    workflow_node_id: str
+    workflow_label: str
+    bpmn_element_id: str
+    bpmn_label: str
+    match_score: float
+    distance: int
+    ideal_distance: int
+    max_distance: int
+    is_correct: bool  # True if match_score meets threshold
+    is_ideal_distance: bool  # True if distance == ideal_distance
 
-    # Skip connector nodes
-    if graph_node.type in ["followedByConnector", "andConnector"]:
-        # Follow through to the next node
-        next_node = find_next_node(graph_node.id, node_map, outgoing_edges)
-        if next_node:
-            return build_tree_recursive(next_node, node_map, outgoing_edges, visited)
-        return None
 
-    # Create decision tree node based on graph node type
-    if graph_node.type == "gatewayCheck":
-        # Gateway node - decision point
-        tree_node = DecisionTreeNode(
-            node_id=graph_node.id,
-            node_type="gateway",
-            label=graph_node.data.label,
-            score=graph_node.data.score or 0.0,
-            outcomes=graph_node.data.gatewayOutcomes,
-            children={}
+class BehavioralResult(BaseModel):
+    """Extended result type for behavioral grading with detailed match information"""
+    # AlgorithmResult fields
+    id: str
+    name: str
+    category: str
+    description: str
+    fulfilled: bool
+    confidence: float
+    problematic_elements: list[str] = []
+    inputs: list[AlgorithmFormInput] = []
+
+    # Additional behavioral-specific fields
+    match_details: list[MatchDetail] = []
+    total_score: float = 0.0
+    total_matches: int = 0
+
+
+@dataclass
+class TraversalContext:
+    """Complete traversal state for a branch"""
+    workflow_pos: GraphNode          # Current position in workflow
+    bpmn_pos: PoolElement           # Current position in BPMN model
+    match_scores: list[float] = field(default_factory=list)  # All match scores so far
+    match_details: list[MatchDetail] = field(default_factory=list)  # Detailed match info
+    total_score: float = 0.0        # Accumulated penalty score
+    ideal_distance: int = 1         # Updated by followedBy nodes
+    max_distance: int = 2           # Updated by followedBy nodes
+    visited_nodes: set[str] = field(default_factory=set)  # Cycle detection
+
+    def clone(self) -> "TraversalContext":
+        """Deep copy for branch exploration"""
+        return TraversalContext(
+            workflow_pos=self.workflow_pos,
+            bpmn_pos=self.bpmn_pos,
+            match_scores=self.match_scores.copy(),
+            match_details=self.match_details.copy(),
+            total_score=self.total_score,
+            ideal_distance=self.ideal_distance,
+            max_distance=self.max_distance,
+            visited_nodes=self.visited_nodes.copy()
         )
 
-        # For each outcome, find the connected node
-        if graph_node.data.gatewayOutcomes:
-            for outcome in graph_node.data.gatewayOutcomes:
-                # Find the edge with this outcome
-                next_node = find_next_node_for_outcome(
-                    graph_node.id,
-                    outcome,
-                    node_map,
-                    outgoing_edges
-                )
-                if next_node:
-                    child = build_tree_recursive(
-                        next_node,
-                        node_map,
-                        outgoing_edges,
-                        visited.copy()
-                    )
-                    if child:
-                        tree_node.children[outcome] = child
+    def update_distance_constraints(self, node: GraphNode):
+        """Update from followedBy connector"""
+        self.ideal_distance = node.data.idealDistance or 1
+        self.max_distance = node.data.maxDistance or 2
 
-        return tree_node
+    def apply_match_result(self, bpmn_result: tuple, workflow_node: GraphNode, match_threshold: float = 0.8):
+        """Apply BPMN match result to context"""
+        visit_count, bpmn_elem, match_score = bpmn_result
 
-    elif graph_node.type == "elementCheck":
-        # Element node - task or event
-        tree_node = DecisionTreeNode(
-            node_id=graph_node.id,
-            node_type=graph_node.data.elementType or "element",
-            label=graph_node.data.label,
-            score=graph_node.data.score or 0.0
+        self.bpmn_pos = bpmn_elem
+        self.match_scores.append(match_score)
+        self.total_score += workflow_node.data.score or 0.0
+
+        # Create detailed match record
+        match_detail = MatchDetail(
+            workflow_node_id=workflow_node.id,
+            workflow_label=workflow_node.data.label,
+            bpmn_element_id=bpmn_elem.id,
+            bpmn_label=bpmn_elem.label,
+            match_score=match_score,
+            distance=visit_count,
+            ideal_distance=self.ideal_distance,
+            max_distance=self.max_distance,
+            is_correct=match_score >= match_threshold,
+            is_ideal_distance=visit_count == self.ideal_distance
         )
+        self.match_details.append(match_detail)
 
-        # Find next node in sequence
-        next_node = find_next_node(graph_node.id, node_map, outgoing_edges)
-        if next_node:
-            tree_node.next_node = build_tree_recursive(
-                next_node,
-                node_map,
-                outgoing_edges,
-                visited.copy()
-            )
+        if visit_count > self.max_distance:
+            raise Exception(f"Distance {visit_count} exceeds max {self.max_distance}")
 
-        return tree_node
+        if visit_count > self.ideal_distance:
+            bpmn_elem.flagged = True
 
-    elif graph_node.type == "endNode":
-        # End node
-        return DecisionTreeNode(
-            node_id=graph_node.id,
-            node_type="end",
-            label=graph_node.data.label,
-            score=0.0
-        )
+    @property
+    def confidence(self) -> float:
+        """Calculate average match confidence"""
+        return sum(self.match_scores) / len(self.match_scores) if self.match_scores else 0.0
 
-    return None
 
-def find_next_node(
-    node_id: str,
-    node_map: dict[str, GraphNode],
-    outgoing_edges: dict[str, list[Edge]]
-) -> Optional[GraphNode]:
-    """Find the next node connected to this node"""
-    if node_id not in outgoing_edges:
+@dataclass
+class DivergencePoint:
+    """Info about gateway divergence"""
+    gateway_node: GraphNode
+    bpmn_state: PoolElement         # BPMN position to restore
+    branch_starts: list[GraphNode]   # Outgoing branches
+    connector_id: str                # Where branches converge
+    connector_type: str              # "AND" or "XOR"
+
+
+def _find_start_node(nodes: list[GraphNode], edges: list[Edge]) -> Optional[GraphNode]:
+    # Collect all node IDs that are targets (have incoming edges)
+    target_node_ids = {edge.target for edge in edges}
+
+    # Find nodes that are not targets of any edge
+    start_nodes = [node for node in nodes if node.id not in target_node_ids]
+
+    if len(start_nodes) == 0:
         return None
+    elif len(start_nodes) == 1:
+        return start_nodes[0]
+    else:
+        # Multiple start nodes
+        start_node_ids = [node.id for node in start_nodes]
+        raise ValueError(f"Multiple start nodes found: {start_node_ids}. Expected exactly one start node.")
 
-    # Get the first outgoing edge (for non-gateway nodes)
-    edges = outgoing_edges[node_id]
-    if not edges:
-        return None
 
-    target_id = edges[0].target
-    return node_map.get(target_id)
-
-def find_next_node_for_outcome(
-    gateway_id: str,
-    outcome: str,
-    node_map: dict[str, GraphNode],
-    outgoing_edges: dict[str, list[Edge]]
-) -> Optional[GraphNode]:
-    """Find the next node connected to a specific gateway outcome"""
-    if gateway_id not in outgoing_edges:
-        return None
-
-    # Find the edge with the matching outcome
-    for edge in outgoing_edges[gateway_id]:
-        if edge.outcome == outcome:
-            target_id = edge.target
-            return node_map.get(target_id)
-
-    return None
+def _extract_connector_nodes(nodes: list[GraphNode]) -> list[GraphNode]:
+    connector_types = ["andConnector", "xorConnector"]
+    connector_nodes = [node for node in nodes if node.type in connector_types]
+    return connector_nodes
 
 
 class BehavioralRuleCheck(Algorithm):
@@ -314,38 +316,401 @@ class BehavioralRuleCheck(Algorithm):
 
         return fulfilled, problematic, confidence
 
-    def check_behavior(self, workflow: WorkflowData) -> AlgorithmResult:
-        """Analyze the behavioral rules using decision tree"""
-        # Process edges to compute outcome names for gateway edges
-        workflow.edges = process_edges(workflow.edges, workflow.nodes)
+    def _extract_and_map_connectors(self, workflow: WorkflowData) -> dict[str, ConnectorNode]:
+        """Extract connectors and create lookup map"""
+        connector_list = _extract_connector_nodes(workflow.nodes)
 
-        # Build decision tree
-        tree = build_decision_tree(workflow.nodes, workflow.edges)
-
-        if tree is None:
-            return AlgorithmResult(
-                id=self.id,
-                name=self.name,
-                category=self.algorithm_kind,
-                description=self.description,
-                fulfilled=False,
-                confidence=0.0,
-                problematic_elements=["Failed to build decision tree"],
-                inputs=[],
+        connector_map = {}
+        for node in connector_list:
+            minimum_visit = 2 if node.data.label == "AND" else 1
+            connector_map[node.id] = ConnectorNode(
+                node_id=node.id,
+                node_type=node.data.label,
+                minimum_visit_count=minimum_visit
             )
 
-        # Analyze the tree
-        fulfilled, problematic, confidence = self.analyze_tree(tree)
+        return connector_map
 
-        return AlgorithmResult(
+    def _find_convergence_point(self, branches: list[GraphNode], workflow: WorkflowData) -> str:
+        """Find connector ID where ALL branches converge"""
+        # For each branch, find all reachable connectors
+        branch_connectors: list[set[str]] = []
+
+        for branch in branches:
+            connectors_in_path: set[str] = set()
+            visited: set[str] = set()
+            queue = [branch]
+
+            while queue:
+                current = queue.pop(0)
+
+                if current.id in visited:
+                    continue
+                visited.add(current.id)
+
+                # Check if this is a connector
+                if current.type in ["andConnector", "xorConnector"]:
+                    connectors_in_path.add(current.id)
+
+                # Add next nodes to queue
+                next_nodes = workflow.next(current)
+                queue.extend(next_nodes)
+
+            branch_connectors.append(connectors_in_path)
+
+        # Find connectors that are reachable from ALL branches (intersection)
+        if not branch_connectors:
+            raise Exception("No branches provided for convergence point search")
+
+        common_connectors = branch_connectors[0]
+        for connectors_set in branch_connectors[1:]:
+            common_connectors = common_connectors.intersection(connectors_set)
+
+        if not common_connectors:
+            raise Exception("No common convergence connector found for branches")
+
+        # If multiple common connectors, return the closest one (first one encountered in BFS from any branch)
+        visited: set[str] = set()
+        queue = [branches[0]]
+
+        while queue:
+            current = queue.pop(0)
+
+            if current.id in visited:
+                continue
+            visited.add(current.id)
+
+            if current.id in common_connectors:
+                return current.id
+
+            next_nodes = workflow.next(current)
+            queue.extend(next_nodes)
+
+        raise Exception("Failed to find closest common convergence connector")
+
+    def _find_bpmn_match(self, context: TraversalContext, workflow_node: GraphNode,
+                         model: Bpmn) -> tuple[int, PoolElement | None, float]:
+        """Find matching BPMN element for workflow node"""
+        if workflow_node.data.checkType == "gateway":
+            gateway_type = getattr(workflow_node.data, 'gatewayType', None)
+            gateway_outcomes = getattr(workflow_node.data, 'gatewayOutcomes', None)
+            expected_outcomes = len(gateway_outcomes) if gateway_outcomes is not None else None
+
+            if gateway_type and expected_outcomes:
+                return model.find_next_gateway(
+                    context.bpmn_pos.id, gateway_type, expected_outcomes,
+                    max_distance=context.max_distance
+                )
+            else:
+                raise Exception(f"Gateway node missing gatewayType or gatewayOutcomes")
+        else:
+            return model.find_next_task(
+                context.bpmn_pos.id, workflow_node.data.label,
+                max_distance=context.max_distance, match_threshold=0.8
+            )
+
+    def _merge_contexts(self, branch_results: list[TraversalContext]) -> TraversalContext:
+        """Merge multiple branch contexts into one"""
+        # Use the last branch's context as base (it completed the convergence)
+        merged = branch_results[-1].clone()
+
+        # Merge match scores, details, and scores from all branches
+        merged.match_scores = []
+        merged.match_details = []
+        merged.total_score = 0.0
+        merged.visited_nodes = set()
+
+        for ctx in branch_results:
+            merged.match_scores.extend(ctx.match_scores)
+            merged.match_details.extend(ctx.match_details)
+            merged.total_score += ctx.total_score
+            merged.visited_nodes.update(ctx.visited_nodes)
+
+        return merged
+
+    def _get_node_by_id(self, node_id: str, workflow: WorkflowData) -> GraphNode:
+        """Find workflow node by ID"""
+        for node in workflow.nodes:
+            if node.id == node_id:
+                return node
+        raise Exception(f"Node {node_id} not found")
+
+    def _traverse_from(self, context: TraversalContext, model: Bpmn,
+                       connectors: dict[str, ConnectorNode], workflow: WorkflowData) -> TraversalContext:
+        """Recursively traverse workflow with branch handling"""
+
+        while True:
+            next_nodes = list(workflow.next(context.workflow_pos))
+
+            if not next_nodes:
+                print("No more workflow nodes to process")
+                return context  # End of path
+
+            # MULTIPLE NEXT NODES (divergence point)
+            if len(next_nodes) != 1:
+                print(f"\n--- Detected divergence with {len(next_nodes)} branches ---")
+                return self._handle_divergence(context, next_nodes, connectors, model, workflow)
+
+            # SINGLE NEXT NODE (linear flow)
+            next_node = next_nodes[0]
+
+            print(f"\n--- Processing workflow node {next_node.id} ---")
+            print(f"Node label: '{next_node.data.label}'")
+            print(f"Node type: {next_node.type}")
+
+            # Handle connector nodes
+            if next_node.id in connectors:
+                connector = connectors[next_node.id]
+                branch_id = f"{context.workflow_pos.id}_br"
+
+                print(f"Reached connector: {connector.node_type} (visit {connector.visit_count + 1}/{connector.minimum_visit_count})")
+
+                if connector.register_visit(branch_id):
+                    # Convergence complete, continue past connector
+                    print(f"Connector convergence complete, continuing...")
+                    context.workflow_pos = next_node
+                    continue
+                else:
+                    # Need more branches, pause here
+                    print(f"Connector needs more branches, pausing this branch")
+                    return context
+
+            # Handle followedBy connectors
+            elif next_node.data.relationshipType == "followedBy":
+                print(f"Updating distance constraints: ideal={next_node.data.idealDistance}, max={next_node.data.maxDistance}")
+                context.update_distance_constraints(next_node)
+                context.workflow_pos = next_node
+                continue
+
+            # Handle element/gateway nodes
+            elif next_node.data.checkType in ["element", "gateway"]:
+                # Check if we're already at the target element (can happen after branch merges)
+                # Normalize labels by removing whitespace and converting to lowercase
+                bpmn_label_norm = " ".join(context.bpmn_pos.label.split()).lower()
+                workflow_label_norm = " ".join(next_node.data.label.split()).lower()
+
+                if bpmn_label_norm == workflow_label_norm:
+                    print(f"Already at target element '{next_node.data.label}', skipping search")
+                    # Still record this as a perfect match
+                    context.match_scores.append(1.0)
+
+                    # Create match detail for this perfect match
+                    match_detail = MatchDetail(
+                        workflow_node_id=next_node.id,
+                        workflow_label=next_node.data.label,
+                        bpmn_element_id=context.bpmn_pos.id,
+                        bpmn_label=context.bpmn_pos.label,
+                        match_score=1.0,
+                        distance=0,  # Already at position
+                        ideal_distance=context.ideal_distance,
+                        max_distance=context.max_distance,
+                        is_correct=True,
+                        is_ideal_distance=True  # Distance 0 is better than ideal
+                    )
+                    context.match_details.append(match_detail)
+
+                    context.workflow_pos = next_node
+                    continue
+
+                bpmn_result = self._find_bpmn_match(context, next_node, model)
+                if not bpmn_result[1]:  # No match found
+                    raise Exception(f"Could not find BPMN element for {next_node.data.label}")
+
+                visit_count, bpmn_elem, match_score = bpmn_result
+                print(f"Found BPMN match '{bpmn_elem.label}' at distance {visit_count} with score {match_score:.3f}")
+
+                context.apply_match_result(bpmn_result, next_node)
+                context.workflow_pos = next_node
+                continue
+
+            else:
+                # Unknown node type, move forward anyway
+                print(f"Unknown node type, moving to next")
+                context.workflow_pos = next_node
+                continue
+
+
+    def _handle_divergence(self, context: TraversalContext, branches: list[GraphNode],
+                           connectors: dict[str, ConnectorNode], model: Bpmn,
+                           workflow: WorkflowData) -> TraversalContext:
+        """Handle gateway with multiple outgoing branches"""
+
+        # Find convergence connector
+        connector_id = self._find_convergence_point(branches, workflow)
+        connector = connectors[connector_id]
+
+        print(f"Divergence will converge at connector: {connector.node_type} (ID: {connector_id})")
+
+        # Save BPMN state at divergence
+        divergence_bpmn_state = context.bpmn_pos
+
+        if connector.node_type == "AND":
+            return self._handle_and_branches(context, branches, connector,
+                                             divergence_bpmn_state, connectors, model, workflow)
+        elif connector.node_type == "XOR":
+            return self._handle_xor_branches(context, branches, connector,
+                                              divergence_bpmn_state, connectors, model, workflow)
+        else:
+            raise Exception(f"Unknown connector type: {connector.node_type}")
+
+    def _handle_and_branches(self, context: TraversalContext, branches: list[GraphNode],
+                             connector: ConnectorNode, bpmn_state: PoolElement,
+                             connectors: dict[str, ConnectorNode], model: Bpmn,
+                             workflow: WorkflowData) -> TraversalContext:
+        """All branches must reach connector"""
+
+        print(f"\n=== Handling AND branches ({len(branches)} branches) ===")
+        branch_results = []
+
+        for i, branch_start in enumerate(branches):
+            print(f"\n--- Exploring AND branch {i + 1}/{len(branches)} ---")
+
+            # Clone context for this branch
+            branch_ctx = context.clone()
+            branch_ctx.workflow_pos = branch_start
+            branch_ctx.bpmn_pos = bpmn_state  # Reset to divergence point
+
+            # Traverse this branch recursively
+            result_ctx = self._traverse_from(branch_ctx, model, connectors, workflow)
+            branch_results.append(result_ctx)
+
+            print(f"Branch {i + 1} complete with {len(result_ctx.match_scores)} matches")
+
+        # Merge results
+        print(f"\n--- Merging {len(branch_results)} AND branch results ---")
+        merged_ctx = self._merge_contexts(branch_results)
+        merged_ctx.workflow_pos = self._get_node_by_id(connector.node_id, workflow)
+
+        # Continue past connector
+        print(f"Continuing past AND connector...")
+        return self._traverse_from(merged_ctx, model, connectors, workflow)
+
+    def _handle_xor_branches(self, context: TraversalContext, branches: list[GraphNode],
+                             connector: ConnectorNode, bpmn_state: PoolElement,
+                             connectors: dict[str, ConnectorNode], model: Bpmn,
+                             workflow: WorkflowData) -> TraversalContext:
+        """At least one branch must succeed"""
+
+        print(f"\n=== Handling XOR branches ({len(branches)} branches) ===")
+        successful_results = []
+
+        for i, branch_start in enumerate(branches):
+            print(f"\n--- Trying XOR branch {i + 1}/{len(branches)} ---")
+            try:
+                # Clone context for this branch
+                branch_ctx = context.clone()
+                branch_ctx.workflow_pos = branch_start
+                branch_ctx.bpmn_pos = bpmn_state  # Reset to divergence
+
+                # Traverse this branch recursively
+                result_ctx = self._traverse_from(branch_ctx, model, connectors, workflow)
+                successful_results.append(result_ctx)
+
+                print(f"XOR branch {i + 1} succeeded with confidence {result_ctx.confidence:.3f}")
+            except Exception as e:
+                # Branch failed, try next
+                print(f"XOR branch {i + 1} failed: {e}")
+                continue
+
+        if not successful_results:
+            raise Exception("XOR: No branches succeeded")
+
+        # Pick best scoring branch
+        best_ctx = max(successful_results, key=lambda ctx: ctx.confidence)
+        print(f"\n--- Selecting best XOR branch (confidence: {best_ctx.confidence:.3f}) ---")
+        best_ctx.workflow_pos = self._get_node_by_id(connector.node_id, workflow)
+
+        # Continue past connector
+        print(f"Continuing past XOR connector...")
+        return self._traverse_from(best_ctx, model, connectors, workflow)
+
+    def check_behavior(self, workflow: WorkflowData) -> BehavioralResult:
+        """Analyze behavioral rules with AND/XOR connector support"""
+
+        print("\n" + "=" * 80)
+        print("BEHAVIORAL RULE CHECK WITH BRANCHING SUPPORT")
+        print("=" * 80)
+
+        # 1. Find starting workflow node
+        workflow_start = _find_start_node(workflow.nodes, workflow.edges)
+        if not workflow_start:
+            raise Exception("Could not find root node in workflow")
+
+        print(f"\nFound starting workflow node: {workflow_start.id}")
+        print(f"Starting node label: '{workflow_start.data.label}'")
+
+        # 2. Extract and map connectors
+        connectors = self._extract_and_map_connectors(workflow)
+        print(f"\nFound {len(connectors)} connector nodes:")
+        for conn_id, conn in connectors.items():
+            print(f"  - {conn.node_type} connector (ID: {conn_id}, min_visits: {conn.minimum_visit_count})")
+
+        # 3. Parse BPMN model
+        model = Bpmn(self.model_xml)
+
+        # 4. Find starting BPMN element
+        result = model.find_task(workflow_start.data.label, match_threshold=0.8)
+        if not result:
+            raise Exception("Could not find start node in BPMN model")
+        bpmn_start, start_score = result
+
+        print(f"\nFound starting BPMN element: '{bpmn_start.label}' (score: {start_score:.3f})")
+
+        # 5. Create initial traversal context
+        start_match_detail = MatchDetail(
+            workflow_node_id=workflow_start.id,
+            workflow_label=workflow_start.data.label,
+            bpmn_element_id=bpmn_start.id,
+            bpmn_label=bpmn_start.label,
+            match_score=start_score,
+            distance=0,  # Starting position
+            ideal_distance=1,
+            max_distance=2,
+            is_correct=start_score >= 0.8,
+            is_ideal_distance=True
+        )
+
+        initial_context = TraversalContext(
+            workflow_pos=workflow_start,
+            bpmn_pos=bpmn_start,
+            match_scores=[start_score],
+            match_details=[start_match_detail],
+            total_score=0.0
+        )
+
+        # 6. Traverse workflow with branch support
+        print("\n" + "=" * 80)
+        print("STARTING TRAVERSAL")
+        print("=" * 80)
+
+        final_context = self._traverse_from(initial_context, model, connectors, workflow)
+
+        # 7. Calculate results
+        print("\n" + "=" * 80)
+        print("TRAVERSAL COMPLETE")
+        print("=" * 80)
+
+        confidence = final_context.confidence
+        total_matches = len(final_context.match_scores)
+
+        print(f"\nFinal Results:")
+        print(f"  - Total matches: {total_matches}")
+        print(f"  - Overall confidence: {confidence:.3f}")
+        print(f"  - Total score: {final_context.total_score}")
+
+        return BehavioralResult(
             id=self.id,
             name=self.name,
             category=self.algorithm_kind,
             description=self.description,
-            fulfilled=fulfilled,
+            fulfilled=True,
             confidence=confidence,
-            problematic_elements=problematic,
+            problematic_elements=[],
             inputs=[],
+            match_details=final_context.match_details,
+            total_score=final_context.total_score,
+            total_matches=total_matches
         )
+
     def analyze(self, inputs: list[AlgorithmFormInput] | None = None) -> AlgorithmResult:
         raise Exception("Not applicable to behavioral rule check")

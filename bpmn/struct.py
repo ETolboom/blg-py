@@ -46,6 +46,12 @@ class PoolElement:
     # Furthermore, this property only applies to gateways.
     gateway_direction: str = ""
 
+    # Whether the element should be flagged or not
+    flagged: bool = False
+
+    # The amount of elements visited before this element was reached
+    visit_count: int = 0
+
     def to_flow_element(self, source_ref: str, target_ref: str) -> FlowElement:
         return FlowElement(
             id=self.id,
