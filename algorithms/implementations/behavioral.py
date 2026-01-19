@@ -31,6 +31,8 @@ class NodeData(BaseModel):
     elementType: Optional[str] = None
     gatewayType: Optional[str] = None
     gatewayOutcomes: Optional[list[str]] = None
+    isGatewayChecked: Optional[bool] = None
+    isOutcomeChecked: Optional[bool] = None
     relationshipType: Optional[str] = None
     idealDistance: Optional[int] = None
     maxDistance: Optional[int] = None
@@ -80,13 +82,18 @@ class WorkflowData(BaseModel):
     edges: list[Edge]
 
     def next(self, node: GraphNode) -> list[GraphNode]:
+        """Get next nodes, automatically skipping over any notes nodes"""
         outgoing_nodes: list[GraphNode] = []
         for edge in self.edges:
             if edge.source == node.id:
                 # Find the target node by ID
                 for target_node in self.nodes:
                     if target_node.id == edge.target:
-                        outgoing_nodes.append(target_node)
+                        # If target is a notes node, recursively get its next nodes
+                        if target_node.type == "notesNode":
+                            outgoing_nodes.extend(self.next(target_node))
+                        else:
+                            outgoing_nodes.append(target_node)
                         break
         return outgoing_nodes
 
@@ -257,8 +264,8 @@ def _find_start_node(nodes: list[GraphNode], edges: list[Edge]) -> Optional[Grap
     # Collect all node IDs that are targets (have incoming edges)
     target_node_ids = {edge.target for edge in edges}
 
-    # Find nodes that are not targets of any edge
-    start_nodes = [node for node in nodes if node.id not in target_node_ids]
+    # Find nodes that are not targets of any edge, excluding notes nodes
+    start_nodes = [node for node in nodes if node.id not in target_node_ids and node.type != "notesNode"]
 
     if len(start_nodes) == 0:
         return None
@@ -406,10 +413,21 @@ class BehavioralRuleCheck(Algorithm):
             gateway_outcomes = getattr(workflow_node.data, 'gatewayOutcomes', None)
             expected_outcomes = len(gateway_outcomes) if gateway_outcomes is not None else None
 
+            # Get label checking flags (default to False if not provided)
+            is_gateway_checked = getattr(workflow_node.data, 'isGatewayChecked', False) or False
+            is_outcome_checked = getattr(workflow_node.data, 'isOutcomeChecked', False) or False
+
             if gateway_type and expected_outcomes:
                 return model.find_next_gateway(
-                    context.bpmn_pos.id, gateway_type, expected_outcomes,
-                    max_distance=context.max_distance
+                    context.bpmn_pos.id,
+                    gateway_type,
+                    expected_outcomes,
+                    max_distance=context.max_distance,
+                    gateway_label=workflow_node.data.label,
+                    outcome_labels=gateway_outcomes if gateway_outcomes else [],
+                    check_gateway_label=is_gateway_checked,
+                    check_outcome_labels=is_outcome_checked,
+                    match_threshold=0.8
                 )
             else:
                 raise Exception(f"Gateway node missing gatewayType or gatewayOutcomes")

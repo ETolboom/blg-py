@@ -354,10 +354,115 @@ class Bpmn:
 
         return -1, None, 0.0
 
-    def find_next_gateway(self, starting_element_id: str, gateway_type: str, expected_outcomes: int, max_distance: int = 2) -> tuple[int, PoolElement | None, float]:
-        """Find the next gateway element based on type and number of outcomes"""
+    def _check_gateway_match(self, gateway: PoolElement, normalized_gateway_type: str, expected_outcomes: int, pool: Pool, gateway_label: str = "", outcome_labels: list[str] | None = None, check_gateway_label: bool = False, check_outcome_labels: bool = False, match_threshold: float = 0.8) -> bool:
+        """Helper method to check if a gateway matches all required criteria"""
+        if outcome_labels is None:
+            outcome_labels = []
+
+        # Check gateway type
+        gateway_type_match = normalized_gateway_type in gateway.name.lower()
+        if not gateway_type_match:
+            print(f"[_check_gateway_match] Gateway type mismatch: expected '{normalized_gateway_type}', got '{gateway.name}'")
+            return False
+
+        # Check number of outgoing edges
+        num_outgoing = len(gateway.outgoing)
+        outcomes_match = num_outgoing == expected_outcomes
+        if not outcomes_match:
+            print(f"[_check_gateway_match] Outcomes mismatch: expected {expected_outcomes}, got {num_outgoing}")
+            return False
+
+        # Check gateway label if required
+        if check_gateway_label:
+            if not gateway.label:
+                print(f"[_check_gateway_match] Gateway has no label, but label check is required")
+                return False
+
+            similarity_matrix = create_similarity_matrix([gateway_label], [gateway.label])
+            label_score = similarity_matrix[0, 0].item()
+            print(f"[_check_gateway_match] Gateway label similarity: '{gateway.label}' vs '{gateway_label}' = {label_score:.3f}")
+
+            if label_score < match_threshold:
+                print(f"[_check_gateway_match] Gateway label score {label_score:.3f} < threshold {match_threshold}")
+                return False
+
+        # Check outcome labels if required
+        if check_outcome_labels and outcome_labels:
+            # Get the labels of the outgoing flows
+            flow_labels = []
+            for flow_id in gateway.outgoing:
+                for flow in pool.flows:
+                    if flow.id == flow_id:
+                        flow_labels.append(flow.label)
+                        break
+
+            print(f"[_check_gateway_match] Gateway outgoing flow labels: {flow_labels}")
+            print(f"[_check_gateway_match] Expected outcome labels: {outcome_labels}")
+
+            # Check if we have the right number of flow labels
+            if len(flow_labels) != len(outcome_labels):
+                print(f"[_check_gateway_match] Number of flow labels ({len(flow_labels)}) != expected ({len(outcome_labels)})")
+                return False
+
+            # Check if all expected outcome labels match (order doesn't matter)
+            # For each expected label, find a matching flow label
+            # Empty expected labels are automatically accepted (no matching needed)
+            matched_flow_indices = set()
+            for i, expected_label in enumerate(outcome_labels):
+                # If expected label is empty, automatically accept it (don't check)
+                if not expected_label or expected_label.strip() == "":
+                    print(f"[_check_gateway_match] Outcome {i} has empty label, accepting without matching")
+                    # Still consume one flow slot
+                    for j in range(len(flow_labels)):
+                        if j not in matched_flow_indices:
+                            matched_flow_indices.add(j)
+                            break
+                    continue
+
+                # Non-empty expected label - must find a match
+                found_match = False
+                for j, flow_label in enumerate(flow_labels):
+                    if j in matched_flow_indices:
+                        continue
+
+                    # Compare with similarity
+                    similarity_matrix = create_similarity_matrix([expected_label], [flow_label])
+                    score = similarity_matrix[0, 0].item()
+                    print(f"[_check_gateway_match] Comparing outcome '{expected_label}' with flow '{flow_label}': {score:.3f}")
+
+                    if score >= match_threshold:
+                        matched_flow_indices.add(j)
+                        found_match = True
+                        break
+
+                if not found_match:
+                    print(f"[_check_gateway_match] Could not find match for expected outcome '{expected_label}'")
+                    return False
+
+        print(f"[_check_gateway_match] Gateway MATCHES all criteria!")
+        return True
+
+    def find_next_gateway(self, starting_element_id: str, gateway_type: str, expected_outcomes: int, max_distance: int = 2, gateway_label: str = "", outcome_labels: list[str] | None = None, check_gateway_label: bool = False, check_outcome_labels: bool = False, match_threshold: float = 0.8) -> tuple[int, PoolElement | None, float]:
+        """Find the next gateway element based on type and number of outcomes
+
+        Args:
+            starting_element_id: ID of element to start search from
+            gateway_type: Type of gateway (xor, and, or, etc.)
+            expected_outcomes: Number of expected outgoing edges
+            max_distance: Maximum distance to search
+            gateway_label: Label to match if check_gateway_label is True
+            outcome_labels: List of outcome labels to match if check_outcome_labels is True
+            check_gateway_label: Whether to check the gateway's label
+            check_outcome_labels: Whether to check the outcome (flow) labels
+            match_threshold: Similarity threshold for label matching
+        """
+        if outcome_labels is None:
+            outcome_labels = []
+
         print(f"\n[find_next_gateway] Starting search from element ID: {starting_element_id}")
         print(f"[find_next_gateway] Looking for GATEWAY: type={gateway_type}, expected_outcomes={expected_outcomes} (max_distance={max_distance})")
+        print(f"[find_next_gateway] Check gateway label: {check_gateway_label} ('{gateway_label}')")
+        print(f"[find_next_gateway] Check outcome labels: {check_outcome_labels} ({outcome_labels})")
 
         # Map gateway type aliases to BPMN names
         gateway_type_mapping = {
@@ -420,11 +525,7 @@ class Bpmn:
                     # Check if the boundary event itself is a gateway (unlikely but possible)
                     is_gateway = "gateway" in boundary_event.name.lower()
                     if is_gateway:
-                        gateway_type_match = normalized_gateway_type in boundary_event.name.lower()
-                        num_outgoing = len(boundary_event.outgoing)
-                        outcomes_match = num_outgoing == expected_outcomes
-
-                        if gateway_type_match and outcomes_match:
+                        if self._check_gateway_match(boundary_event, normalized_gateway_type, expected_outcomes, pool_for_element, gateway_label, outcome_labels, check_gateway_label, check_outcome_labels, match_threshold):
                             print(f"[find_next_gateway] MATCH on boundary event gateway!")
                             return 1, boundary_event, 1.0
 
@@ -456,11 +557,7 @@ class Bpmn:
                             # Check if this is the gateway we're looking for
                             is_gateway = "gateway" in next_element.name.lower()
                             if is_gateway:
-                                gateway_type_match = normalized_gateway_type in next_element.name.lower()
-                                num_outgoing = len(next_element.outgoing)
-                                outcomes_match = num_outgoing == expected_outcomes
-
-                                if gateway_type_match and outcomes_match:
+                                if self._check_gateway_match(next_element, normalized_gateway_type, expected_outcomes, pool_for_element, gateway_label, outcome_labels, check_gateway_label, check_outcome_labels, match_threshold):
                                     print(f"[find_next_gateway] MATCH on gateway after boundary event!")
                                     return 1, next_element, 1.0
 
@@ -508,16 +605,7 @@ class Bpmn:
                 print(f"[find_next_gateway] Is gateway: {is_gateway}")
 
                 if is_gateway:
-                    # Check gateway type match using normalized type
-                    gateway_type_match = normalized_gateway_type in next_element.name.lower()
-                    print(f"[find_next_gateway] Gateway type match: {gateway_type_match} (looking for '{normalized_gateway_type}', found '{next_element.name}')")
-
-                    # Check number of outgoing edges
-                    num_outgoing = len(next_element.outgoing)
-                    outcomes_match = num_outgoing == expected_outcomes
-                    print(f"[find_next_gateway] Outgoing edges: {num_outgoing}, Expected: {expected_outcomes}, Match: {outcomes_match}")
-
-                    if gateway_type_match and outcomes_match:
+                    if self._check_gateway_match(next_element, normalized_gateway_type, expected_outcomes, pool_for_element, gateway_label, outcome_labels, check_gateway_label, check_outcome_labels, match_threshold):
                         # Match found at visit_count + 1 (since we're looking at next elements)
                         print(f"[find_next_gateway] GATEWAY MATCH! Found at distance {visit_count + 1}")
                         return visit_count + 1, next_element, 1.0
