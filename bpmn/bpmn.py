@@ -68,7 +68,26 @@ class Bpmn:
                         element.incoming.append(nested_child.text or "")
                     elif nested_child_type == "outgoing":
                         element.outgoing.append(nested_child.text or "")
+                    elif nested_child_type.endswith("EventDefinition"):
+                        # Extract event type (e.g., "messageEventDefinition" -> "message")
+                        event_type = nested_child_type.replace("EventDefinition", "")
+                        element.event_definition = event_type.lower()
+
                 pool_elements.append(element)
+
+            # Second pass: Handle boundary events
+            # Boundary events are attached to other elements and should be linked
+            # via the boundary_events field
+            for element in pool_elements:
+                attached_to_ref = element.id
+                # Find all boundary events attached to this element
+                for child in pool:
+                    element_type = child.tag.split("}")[-1]
+                    if child.get("attachedToRef") == attached_to_ref:
+                        # This is a boundary event attached to the current element
+                        boundary_event_id = child.get("id") or ""
+                        if boundary_event_id and boundary_event_id not in element.boundary_events:
+                            element.boundary_events.append(boundary_event_id)
 
             parsed_pool.elements = pool_elements
             self.pools.append(parsed_pool)
@@ -122,10 +141,28 @@ class Bpmn:
             print(f"[_search_task_in_path] Target element '{target_element_id}' not found")
             return -1, None, 0.0
 
-        print(f"[_search_task_in_path] Distance {current_distance}: Found element '{target_element.label}' (type: {target_element.name})")
+        print(f"[_search_task_in_path] Distance {current_distance}: Found element '{target_element.label}' (type: {target_element.name}, event_def: {target_element.event_definition})")
 
         # Check if this element matches
-        if target_element.label:
+        # First check if it's a boundary event being searched for
+        is_boundary_event = "boundary" in target_element.name.lower()
+        task_label_lower = task_label.lower()
+
+        if is_boundary_event:
+            # Match boundary events by type
+            is_match = False
+            if "boundary" in task_label_lower and "event" in task_label_lower:
+                is_match = True
+                print(f"[_search_task_in_path] Generic boundary event match")
+            elif target_element.event_definition and target_element.event_definition in task_label_lower:
+                is_match = True
+                print(f"[_search_task_in_path] Matched boundary event type '{target_element.event_definition}'")
+
+            if is_match:
+                print(f"[_search_task_in_path] MATCH on boundary event!")
+                return current_distance, target_element, 1.0
+        elif target_element.label:
+            # Match other elements by label similarity
             similarity_matrix = create_similarity_matrix([task_label], [target_element.label])
             similarity_score = similarity_matrix[0, 0].item()
             print(f"[_search_task_in_path] Comparing '{target_element.label}' with '{task_label}': {similarity_score:.3f}")
@@ -175,6 +212,7 @@ class Bpmn:
 
         print(f"[find_next_task] Starting element: '{starting_element.label}' (ID: {starting_element.id})")
         print(f"[find_next_task] Outgoing connections: {starting_element.outgoing}")
+        print(f"[find_next_task] Boundary events: {starting_element.boundary_events}")
 
         current_element = starting_element
         visit_count = 0
@@ -182,7 +220,54 @@ class Bpmn:
 
         # Iterate through the flow
         while visit_count < max_distance:
-            # 2. Find the next element based on the outgoing id
+            # 2. Check boundary events first (if this is the first iteration)
+            if is_first_iteration and current_element.boundary_events:
+                print(f"[find_next_task] Element has {len(current_element.boundary_events)} boundary event(s), checking them first")
+                for boundary_event_id in current_element.boundary_events:
+                    # Find the boundary event element
+                    boundary_event = None
+                    for element in pool_for_element.elements:
+                        if element.id == boundary_event_id:
+                            boundary_event = element
+                            break
+
+                    if not boundary_event:
+                        print(f"[find_next_task] Boundary event '{boundary_event_id}' not found, skipping")
+                        continue
+
+                    print(f"[find_next_task] Checking boundary event with type '{boundary_event.event_definition}' (ID: {boundary_event_id})")
+
+                    # Check if the boundary event itself matches by type
+                    # Extract event type from task_label (e.g., "message event" -> "message", "timer" -> "timer")
+                    task_label_lower = task_label.lower()
+                    is_boundary_event_match = False
+
+                    # Match generic "boundary event" to any boundary event
+                    if "boundary" in task_label_lower and "event" in task_label_lower:
+                        is_boundary_event_match = True
+                        print(f"[find_next_task] Generic boundary event match")
+                    # Match specific event types (message, timer, error, signal, etc.)
+                    elif boundary_event.event_definition:
+                        # Check if the event type appears in the task label
+                        if boundary_event.event_definition in task_label_lower:
+                            is_boundary_event_match = True
+                            print(f"[find_next_task] Matched event type '{boundary_event.event_definition}' in '{task_label}'")
+
+                    if is_boundary_event_match:
+                        print(f"[find_next_task] MATCH on boundary event!")
+                        return 1, boundary_event, 1.0
+
+                    # If boundary event doesn't match, continue down its outgoing path
+                    if boundary_event.outgoing:
+                        for outgoing_flow_id in boundary_event.outgoing:
+                            print(f"[find_next_task] Trying boundary event outgoing flow ID: {outgoing_flow_id}")
+                            result = self._search_task_in_path(outgoing_flow_id, pool_for_element, task_label, match_threshold, max_distance, visit_count + 1)
+                            if result[1] is not None:  # Found a match
+                                return result
+
+                print(f"[find_next_task] No match found in boundary events, checking normal outgoing flows")
+
+            # 3. Find the next element based on the outgoing id
             if not current_element.outgoing:
                 # No outgoing edges, can't continue
                 print(f"[find_next_task] No outgoing edges from '{current_element.label}', stopping")
@@ -308,13 +393,80 @@ class Bpmn:
 
         print(f"[find_next_gateway] Starting element: '{starting_element.label}' (ID: {starting_element.id})")
         print(f"[find_next_gateway] Outgoing connections: {starting_element.outgoing}")
+        print(f"[find_next_gateway] Boundary events: {starting_element.boundary_events}")
 
         current_element = starting_element
         visit_count = 0
 
         # Iterate through the flow - for gateways, we can traverse through multiple outgoing edges
         while visit_count < max_distance:
-            # 2. Check all outgoing flows from current element
+            # 2. Check boundary events first (only from starting element)
+            if visit_count == 0 and current_element.boundary_events:
+                print(f"[find_next_gateway] Element has {len(current_element.boundary_events)} boundary event(s), checking them first")
+                for boundary_event_id in current_element.boundary_events:
+                    # Find the boundary event element
+                    boundary_event = None
+                    for element in pool_for_element.elements:
+                        if element.id == boundary_event_id:
+                            boundary_event = element
+                            break
+
+                    if not boundary_event:
+                        print(f"[find_next_gateway] Boundary event '{boundary_event_id}' not found, skipping")
+                        continue
+
+                    print(f"[find_next_gateway] Checking boundary event '{boundary_event.label}' (ID: {boundary_event_id})")
+
+                    # Check if the boundary event itself is a gateway (unlikely but possible)
+                    is_gateway = "gateway" in boundary_event.name.lower()
+                    if is_gateway:
+                        gateway_type_match = normalized_gateway_type in boundary_event.name.lower()
+                        num_outgoing = len(boundary_event.outgoing)
+                        outcomes_match = num_outgoing == expected_outcomes
+
+                        if gateway_type_match and outcomes_match:
+                            print(f"[find_next_gateway] MATCH on boundary event gateway!")
+                            return 1, boundary_event, 1.0
+
+                    # Check the boundary event's outgoing paths for gateways
+                    if boundary_event.outgoing:
+                        for outgoing_flow_id in boundary_event.outgoing:
+                            # Find the flow target
+                            target_element_id = None
+                            for flow in pool_for_element.flows:
+                                if flow.id == outgoing_flow_id:
+                                    target_element_id = flow.target
+                                    break
+
+                            if not target_element_id:
+                                continue
+
+                            # Find the target element
+                            next_element = None
+                            for element in pool_for_element.elements:
+                                if element.id == target_element_id:
+                                    next_element = element
+                                    break
+
+                            if not next_element:
+                                continue
+
+                            print(f"[find_next_gateway] Found element after boundary event: '{next_element.label}' (type: {next_element.name})")
+
+                            # Check if this is the gateway we're looking for
+                            is_gateway = "gateway" in next_element.name.lower()
+                            if is_gateway:
+                                gateway_type_match = normalized_gateway_type in next_element.name.lower()
+                                num_outgoing = len(next_element.outgoing)
+                                outcomes_match = num_outgoing == expected_outcomes
+
+                                if gateway_type_match and outcomes_match:
+                                    print(f"[find_next_gateway] MATCH on gateway after boundary event!")
+                                    return 1, next_element, 1.0
+
+                print(f"[find_next_gateway] No match found in boundary events, checking normal outgoing flows")
+
+            # 3. Check all outgoing flows from current element
             if not current_element.outgoing:
                 print(f"[find_next_gateway] No outgoing edges from '{current_element.label}', stopping")
                 return -1, None, 0.0

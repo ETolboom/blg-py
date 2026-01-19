@@ -38,6 +38,12 @@ class PoolElement:
     # Outgoing contains all the IDs of elements that the PoolElement has outgoing edges to.
     outgoing: list[str] = field(default_factory=list)
 
+    # BoundaryEvents contains the IDs of all boundary events attached to this element
+    boundary_events: list[str] = field(default_factory=list)
+
+    # EventDefinition stores the type of event definition for events (e.g., "message", "timer", "error")
+    event_definition: str = ""
+
     # Children stores all the PoolElement instances nested within the current PoolElement
     children: list["PoolElement"] = field(default_factory=list)
 
