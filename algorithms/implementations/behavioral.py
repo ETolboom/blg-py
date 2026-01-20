@@ -160,6 +160,17 @@ class MatchDetail:
     is_ideal_match: bool            # True if match_score >= ideal_match_threshold
 
 
+@dataclass
+class TemplateEvaluationResult:
+    """Result from evaluating a single template within a group"""
+    template_id: str
+    template_name: str
+    score: float
+    confidence: float
+    match_details: list[MatchDetail]
+    success: bool  # True if evaluation completed without errors
+
+
 class BehavioralResult(BaseModel):
     """Extended result type for behavioral grading with detailed match information"""
     # AlgorithmResult fields
@@ -176,6 +187,27 @@ class BehavioralResult(BaseModel):
     match_details: list[MatchDetail] = []
     total_score: float = 0.0
     total_matches: int = 0
+
+
+class GroupEvaluationResult(BaseModel):
+    """Result from evaluating a template group"""
+    group_id: str
+    group_name: str
+    group_description: str
+    condition: str  # "XOR" or "AND"
+
+    # Individual template results
+    template_results: list[TemplateEvaluationResult]
+
+    # Aggregated result (MAX scoring)
+    final_score: float              # MAX of template scores
+    best_template_id: str           # Which template achieved max score
+    overall_confidence: float       # From best template
+
+    # For rubric compatibility
+    match_details: list[MatchDetail]
+    problematic_elements: list[str]
+    fulfilled: bool
 
 
 @dataclass
@@ -787,3 +819,167 @@ class BehavioralRuleCheck(Algorithm):
 
     def analyze(self, inputs: list[AlgorithmFormInput] | None = None) -> AlgorithmResult:
         raise Exception("Not applicable to behavioral rule check")
+
+
+class BehavioralGroupEvaluator:
+    """Evaluates template groups with XOR/AND conditions and MAX scoring"""
+
+    def __init__(self, model_xml: str):
+        self.model_xml = model_xml
+
+    def evaluate_group(self, group) -> GroupEvaluationResult:
+        """
+        Evaluate all templates in group and aggregate results
+
+        Steps:
+        1. Load all templates from group.template_ids
+        2. Evaluate each using BehavioralRuleCheck.check_behavior()
+        3. Collect individual TemplateEvaluationResult for each
+        4. Apply aggregation based on condition (XOR/AND)
+        5. Return GroupEvaluationResult with MAX score
+        """
+        import templates.manager
+
+        template_manager = templates.manager.get_manager()
+        checker = BehavioralRuleCheck(model_xml=self.model_xml)
+
+        template_results = []
+        for template_id in group.template_ids:
+            template = template_manager.get_template(template_id)
+            if template is None:
+                # Template not found, treat as failed
+                template_results.append(TemplateEvaluationResult(
+                    template_id=template_id,
+                    template_name=template_id,
+                    score=0.0,
+                    confidence=0.0,
+                    match_details=[],
+                    success=False
+                ))
+                continue
+
+            workflow_data = WorkflowData(nodes=template.nodes, edges=template.edges)
+
+            try:
+                result = checker.check_behavior(workflow=workflow_data)
+                template_results.append(TemplateEvaluationResult(
+                    template_id=template_id,
+                    template_name=template.name,
+                    score=result.total_score,
+                    confidence=result.confidence,
+                    match_details=result.match_details,
+                    success=True
+                ))
+            except Exception as e:
+                # Template failed to evaluate
+                print(f"Template {template_id} failed: {e}")
+                template_results.append(TemplateEvaluationResult(
+                    template_id=template_id,
+                    template_name=template.name,
+                    score=0.0,
+                    confidence=0.0,
+                    match_details=[],
+                    success=False
+                ))
+
+        return self._aggregate_results(group, template_results)
+
+    def _aggregate_results(self, group, template_results: list[TemplateEvaluationResult]) -> GroupEvaluationResult:
+        """
+        Aggregate template results based on condition
+
+        XOR Logic (Alternative Solutions):
+        - At least ONE template must succeed
+        - Score = MAX(successful_template_scores)
+        - fulfilled = any template succeeded
+        - Use best template's match_details and confidence
+
+        AND Logic (Required Features):
+        - ALL templates must succeed
+        - Score = MAX(all_template_scores) if all succeeded, else 0
+        - fulfilled = all templates succeeded
+        - Merge match_details from all templates
+        """
+        if group.condition.value == "XOR":
+            successful = [r for r in template_results if r.success and r.score > 0]
+
+            if successful:
+                best = max(successful, key=lambda r: r.score)
+                return GroupEvaluationResult(
+                    group_id=group.group_id,
+                    group_name=group.name,
+                    group_description=group.description,
+                    condition=group.condition.value,
+                    template_results=template_results,
+                    final_score=best.score,
+                    best_template_id=best.template_id,
+                    overall_confidence=best.confidence,
+                    match_details=best.match_details,
+                    problematic_elements=self._extract_problematic(best.match_details),
+                    fulfilled=True
+                )
+            else:
+                # No templates succeeded
+                return GroupEvaluationResult(
+                    group_id=group.group_id,
+                    group_name=group.name,
+                    group_description=group.description,
+                    condition=group.condition.value,
+                    template_results=template_results,
+                    final_score=0.0,
+                    best_template_id="",
+                    overall_confidence=0.0,
+                    match_details=[],
+                    problematic_elements=[],
+                    fulfilled=False
+                )
+
+        elif group.condition.value == "AND":
+            all_succeeded = all(r.success for r in template_results)
+
+            if all_succeeded:
+                best = max(template_results, key=lambda r: r.score)
+                # Merge match_details from all templates
+                merged_details = []
+                for r in template_results:
+                    merged_details.extend(r.match_details)
+
+                return GroupEvaluationResult(
+                    group_id=group.group_id,
+                    group_name=group.name,
+                    group_description=group.description,
+                    condition=group.condition.value,
+                    template_results=template_results,
+                    final_score=best.score,
+                    best_template_id=best.template_id,
+                    overall_confidence=best.confidence,
+                    match_details=merged_details,
+                    problematic_elements=self._extract_problematic(merged_details),
+                    fulfilled=True
+                )
+            else:
+                # Not all templates succeeded
+                return GroupEvaluationResult(
+                    group_id=group.group_id,
+                    group_name=group.name,
+                    group_description=group.description,
+                    condition=group.condition.value,
+                    template_results=template_results,
+                    final_score=0.0,
+                    best_template_id="",
+                    overall_confidence=0.0,
+                    match_details=[],
+                    problematic_elements=[],
+                    fulfilled=False
+                )
+        else:
+            raise ValueError(f"Unknown condition: {group.condition}")
+
+    def _extract_problematic(self, match_details: list[MatchDetail]) -> list[str]:
+        """Extract BPMN IDs where matches were suboptimal"""
+        problematic = []
+        for match in match_details:
+            if not match.is_correct or not match.is_ideal_match or not match.is_ideal_distance:
+                if match.bpmn_element_id not in problematic:
+                    problematic.append(match.bpmn_element_id)
+        return problematic

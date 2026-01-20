@@ -18,9 +18,9 @@ from algorithms import (
     AlgorithmFormInput,
     AlgorithmInputType, AlgorithmResult,
 )
-from algorithms.implementations.behavioral import WorkflowData, BehavioralRuleCheck
+from algorithms.implementations.behavioral import WorkflowData, BehavioralRuleCheck, GroupEvaluationResult, BehavioralGroupEvaluator
 from rubric import OnboardingRubric, Rubric, RubricCriterion
-from templates.manager import RuleTemplate
+from templates.manager import RuleTemplate, TemplateGroup, GroupCondition
 
 app = FastAPI()
 
@@ -226,11 +226,12 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: RuleTemplate) -> R
         if index != -1:
             del _rubric.criteria[index]
 
-        # Serialize nodes and edges to JSON strings for storage
-        # (They are always lists after field validation)
-        nodes_json = json.dumps(inputs.nodes)
-        edges_json = json.dumps(inputs.edges)
+        # Save template to disk first
+        with open(os.path.join(base_path, "templates", inputs.id+".json"), "w") as f:
+            f.write(inputs.model_dump_json())
 
+        # Store only a reference to the template ID in the rubric
+        # The actual template data is loaded from disk when needed
         _rubric.criteria.append(
             RubricCriterion(
                 id=inputs.id,
@@ -239,14 +240,9 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: RuleTemplate) -> R
                 category=AlgorithmComplexity.COMPLEX,
                 inputs=[
                     AlgorithmFormInput(
-                        input_label="nodes",
+                        input_label="template_id",
                         input_type=AlgorithmInputType.STRING,
-                        data=nodes_json,
-                    ),
-                    AlgorithmFormInput(
-                        input_label="edges",
-                        input_type=AlgorithmInputType.STRING,
-                        data=edges_json,
+                        data=inputs.id,  # Only store the template ID
                     ),
                 ],
                 fulfilled=True,
@@ -260,9 +256,6 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: RuleTemplate) -> R
         # Write new rubric to file so it persists
         with open(os.path.join(base_path, "rubric.json"), "w") as f:
             f.write(_rubric.model_dump_json())
-
-        with open(os.path.join(base_path, "templates", inputs.id+".json"), "w") as f:
-            f.write(inputs.model_dump_json())
 
         return _rubric
     except HTTPException:
@@ -399,21 +392,98 @@ async def analyze_submission(filename: str) -> Response | Rubric:
 
     parsed_algorithms: list[RubricCriterion] = []
     for algorithm in _rubric.criteria:
-        result = manager.get_algorithm(algorithm.id).analyze(inputs=algorithm.inputs)
-        parsed_algorithms.append(
-            RubricCriterion(
-                id=result.id,
-                name=result.name,
-                description=result.description,
-                category=result.category,
-                fulfilled=result.fulfilled,
-                inputs=result.inputs,
-                confidence=result.confidence,
-                problematic_elements=result.problematic_elements,
-                default_points=1.0,
-                custom_score=None,
+        # Check if this is a behavioral (template-based) criterion
+        if algorithm.category == AlgorithmComplexity.COMPLEX:
+            # This is a behavioral criterion - detect if it's a GROUP or INDIVIDUAL TEMPLATE
+            criterion_id = algorithm.id
+            template_manager = templates.manager.get_manager()
+
+            # Check if this is a group (prefixed with "group:")
+            if criterion_id.startswith("group:"):
+                # === GROUP EVALUATION ===
+                # Strip the "group:" prefix to get the actual group_id
+                group_id = criterion_id[6:]  # Remove "group:" prefix
+                group = template_manager.get_group(group_id)
+
+                if group is None:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Group '{group_id}' not found on disk but referenced in rubric"
+                    )
+
+                evaluator = BehavioralGroupEvaluator(model_xml=model_xml)
+                result = evaluator.evaluate_group(group)
+
+                # Save evaluation results to group file
+                template_manager.update_group_evaluation(group_id, result)
+
+                parsed_algorithms.append(
+                    RubricCriterion(
+                        id=criterion_id,  # Keep the "group:" prefix in the result
+                        name=group.name,
+                        description=group.description,
+                        category=AlgorithmComplexity.COMPLEX,
+                        fulfilled=result.fulfilled,
+                        inputs=algorithm.inputs,
+                        confidence=result.overall_confidence,
+                        problematic_elements=result.problematic_elements,
+                        default_points=group.maxPoints,
+                        custom_score=result.final_score if round(result.final_score, 2) != group.maxPoints else None,
+                    )
+                )
+            else:
+                # === INDIVIDUAL TEMPLATE EVALUATION (existing logic) ===
+                template = template_manager.get_template(criterion_id)
+
+                if template is None:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Template or group '{criterion_id}' not found on disk but referenced in rubric"
+                    )
+
+                # Run behavioral analysis
+                workflow_data = WorkflowData(nodes=template.nodes, edges=template.edges)
+                checker = BehavioralRuleCheck(model_xml=model_xml)
+                result = checker.check_behavior(workflow=workflow_data)
+
+                # Collect problematic elements
+                problematic_elements = []
+                for match in result.match_details:
+                    if not match.is_correct or not match.is_ideal_match or not match.is_ideal_distance:
+                        if match.bpmn_element_id not in problematic_elements:
+                            problematic_elements.append(match.bpmn_element_id)
+
+                parsed_algorithms.append(
+                    RubricCriterion(
+                        id=criterion_id,
+                        name=template.name,
+                        description=template.description,
+                        category=AlgorithmComplexity.COMPLEX,
+                        fulfilled=result.total_score > 0,
+                        inputs=algorithm.inputs,  # Keep template_id reference
+                        confidence=result.confidence,
+                        problematic_elements=problematic_elements,
+                        default_points=template.maxPoints,
+                        custom_score=result.total_score if round(result.total_score, 2) != template.maxPoints else None,
+                    )
+                )
+        else:
+            # Standard algorithm - use algorithm manager
+            result = manager.get_algorithm(algorithm.id).analyze(inputs=algorithm.inputs)
+            parsed_algorithms.append(
+                RubricCriterion(
+                    id=result.id,
+                    name=result.name,
+                    description=result.description,
+                    category=result.category,
+                    fulfilled=result.fulfilled,
+                    inputs=result.inputs,
+                    confidence=result.confidence,
+                    problematic_elements=result.problematic_elements,
+                    default_points=1.0,
+                    custom_score=None,
+                )
             )
-        )
 
     parsed_submission = Rubric(
         criteria=parsed_algorithms,
@@ -490,6 +560,55 @@ async def analyze_all(req: Request) -> list[Node]:
         node_idx += 1
 
     return nodes
+
+
+@app.post("/submissions/{filename}/sanity-check")
+async def sanity_check_submission(filename: str):
+    """
+    Perform a sanity check on a submission by comparing its task labels
+    with the reference model. This helps determine if behavioral checking
+    is worth performing.
+
+    Returns:
+    - pairings: List of matched task pairs with their similarity scores
+    - missing: List of reference task IDs that didn't match
+    - coverage: Percentage of reference tasks that matched (0.0 to 1.0)
+    - total_reference_tasks: Total number of tasks in reference model
+    - total_student_tasks: Total number of tasks in student submission
+
+    If coverage is low (e.g., < 0.5), behavioral checking may not be effective.
+    """
+    global _rubric
+
+    if not _rubric or not _rubric.assignment or not _rubric.assignment.reference_xml:
+        raise HTTPException(
+            status_code=400,
+            detail="No reference BPMN model loaded. Please load a rubric first."
+        )
+
+    if not filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    submission_path = os.path.join(base_path, "submissions", filename)
+
+    if not os.path.exists(submission_path):
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    # Read the student submission
+    with open(submission_path, encoding="utf-8") as f:
+        student_xml = f.read()
+
+    # Import the sanity check utility
+    from utils.sanity_check import check_task_coverage
+
+    # Run the check
+    result = check_task_coverage(
+        reference_xml=_rubric.assignment.reference_xml,
+        student_xml=student_xml,
+        threshold=0.8
+    )
+
+    return result
 
 
 @app.get("/templates")
@@ -587,6 +706,9 @@ async def validate_template(template_id: str) -> dict:
     """
     Validate a rule template against the current rubric's reference BPMN.
     This runs the behavioral analysis and updates the rubric entry.
+
+    If the template is part of any groups, those groups will also be
+    automatically re-evaluated and their rubric entries updated.
     """
     global _rubric
 
@@ -629,7 +751,7 @@ async def validate_template(template_id: str) -> dict:
         # Calculate score: use confidence as the score
         score = result.total_score
 
-        # Update the rubric entry if it exists
+        # Update the rubric entry if it exists (individual template)
         criterion_index = next(
             (i for i, criterion in enumerate(_rubric.criteria) if criterion.id == template_id),
             -1
@@ -644,11 +766,53 @@ async def validate_template(template_id: str) -> dict:
             if round(score, 2) != _rubric.criteria[criterion_index].default_points:
                 _rubric.criteria[criterion_index].custom_score = score
 
-            # Save updated rubric to disk
+        # === NEW: Re-evaluate any groups that contain this template ===
+        affected_groups = []
+        all_groups = template_manager.list_groups()
+
+        for group_info in all_groups:
+            if template_id in group_info.get('template_ids', []):
+                # This group contains the updated template - re-evaluate it
+                group = template_manager.get_group(group_info['group_id'])
+                if group is not None:
+                    # Re-evaluate the group
+                    evaluator = BehavioralGroupEvaluator(model_xml=_rubric.assignment.reference_xml)
+                    group_result = evaluator.evaluate_group(group)
+
+                    # Save evaluation results to group file
+                    template_manager.update_group_evaluation(group.group_id, group_result)
+
+                    # Find and update this group's rubric entry (search with "group:" prefix)
+                    prefixed_group_id = f"group:{group.group_id}"
+                    group_criterion_index = next(
+                        (i for i, criterion in enumerate(_rubric.criteria) if criterion.id == prefixed_group_id),
+                        -1
+                    )
+
+                    if group_criterion_index != -1:
+                        # Update the group's rubric entry
+                        _rubric.criteria[group_criterion_index].fulfilled = group_result.fulfilled
+                        _rubric.criteria[group_criterion_index].confidence = group_result.overall_confidence
+                        _rubric.criteria[group_criterion_index].problematic_elements = group_result.problematic_elements
+
+                        if round(group_result.final_score, 2) != group.maxPoints:
+                            _rubric.criteria[group_criterion_index].custom_score = group_result.final_score
+                        else:
+                            _rubric.criteria[group_criterion_index].custom_score = None
+
+                        affected_groups.append({
+                            "group_id": group.group_id,
+                            "group_name": group.name,
+                            "updated_score": group_result.final_score,
+                            "best_template": group_result.best_template_id
+                        })
+
+        # Save updated rubric to disk (includes both template and group updates)
+        if criterion_index != -1 or affected_groups:
             with open(os.path.join(base_path, "rubric.json"), "w") as f:
                 f.write(_rubric.model_dump_json())
 
-        # Return validation results
+        # Return validation results (including affected groups)
         return {
             "template_id": template_id,
             "template_name": template.name,
@@ -676,12 +840,201 @@ async def validate_template(template_id: str) -> dict:
                     for match in result.match_details
                 ],
                 "problematic_elements": result.problematic_elements
-            }
+            },
+            "affected_groups": affected_groups  # NEW: List of groups that were re-evaluated
         }
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
+
+
+# ===== GROUP MANAGEMENT ENDPOINTS =====
+
+@app.get("/template-groups")
+async def list_template_groups() -> list[dict]:
+    """List all available template groups"""
+    try:
+        template_manager = templates.manager.get_manager()
+        return template_manager.list_groups()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list groups: {str(e)}")
+
+
+@app.get("/template-groups/{group_id}")
+async def get_template_group(group_id: str) -> TemplateGroup:
+    """Get specific template group"""
+    try:
+        template_manager = templates.manager.get_manager()
+        group = template_manager.get_group(group_id)
+        if group is None:
+            raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+        return group
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get group: {str(e)}")
+
+
+@app.post("/template-groups")
+async def create_template_group(group: TemplateGroup) -> TemplateGroup:
+    """Create new template group"""
+    try:
+        template_manager = templates.manager.get_manager()
+
+        # Check if group already exists
+        if template_manager.group_exists(group.group_id):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Group with ID '{group.group_id}' already exists. Use PUT to update."
+            )
+
+        # Validate that all templates exist
+        template_manager.validate_group_templates(group)
+        return template_manager.save_group(group)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create group: {str(e)}")
+
+
+@app.put("/template-groups/{group_id}")
+async def update_template_group(group_id: str, group: TemplateGroup) -> TemplateGroup:
+    """Update existing template group"""
+    try:
+        # Ensure group_id matches
+        if group.group_id != group_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Group ID in URL ('{group_id}') doesn't match ID in body ('{group.group_id}')"
+            )
+
+        template_manager = templates.manager.get_manager()
+
+        # Check if group exists
+        if not template_manager.group_exists(group_id):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Group '{group_id}' not found. Use POST to create."
+            )
+
+        # Validate that all templates exist
+        template_manager.validate_group_templates(group)
+        return template_manager.save_group(group)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update group: {str(e)}")
+
+
+@app.delete("/template-groups/{group_id}")
+async def delete_template_group(group_id: str) -> dict:
+    """Delete template group"""
+    try:
+        template_manager = templates.manager.get_manager()
+        success = template_manager.delete_group(group_id)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+        return {"message": f"Group '{group_id}' deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete group: {str(e)}")
+
+
+# ===== GROUP EVALUATION ENDPOINTS =====
+
+@app.post("/rubric/criteria/behavioral-group/analyze")
+def analyze_behavioral_group(group: TemplateGroup) -> GroupEvaluationResult:
+    """
+    Test evaluate a template group against reference model.
+    Results are automatically saved to the group's JSON file.
+    """
+    global _rubric
+
+    try:
+        if not _rubric or not _rubric.assignment or not _rubric.assignment.reference_xml:
+            raise HTTPException(status_code=400, detail="No reference model loaded")
+
+        # Evaluate the group
+        evaluator = BehavioralGroupEvaluator(model_xml=_rubric.assignment.reference_xml)
+        result = evaluator.evaluate_group(group)
+
+        # Save evaluation results to the group file (if it exists on disk)
+        template_manager = templates.manager.get_manager()
+        if template_manager.group_exists(group.group_id):
+            template_manager.update_group_evaluation(group.group_id, result)
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Group evaluation failed: {str(e)}")
+
+
+@app.post("/rubric/criteria/behavioral-group/{group_id}")
+async def add_behavioral_group_to_rubric(group_id: str, group: TemplateGroup) -> Rubric:
+    """Add template group as rubric criterion"""
+    global _rubric
+
+    try:
+        # Ensure group_id matches
+        if group.group_id != group_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Group ID in URL ('{group_id}') doesn't match ID in body ('{group.group_id}')"
+            )
+
+        # Save group to disk first
+        template_manager = templates.manager.get_manager()
+        template_manager.validate_group_templates(group)
+        template_manager.save_group(group)
+
+        # Use "group:" prefix to distinguish from individual templates in rubric
+        prefixed_group_id = f"group:{group.group_id}"
+
+        # Remove duplicates (if group already in rubric)
+        index = next((i for i, c in enumerate(_rubric.criteria) if c.id == prefixed_group_id), -1)
+        if index != -1:
+            del _rubric.criteria[index]
+
+        # Add to rubric with prefixed ID (frontend can identify groups by "group:" prefix)
+        _rubric.criteria.append(
+            RubricCriterion(
+                id=prefixed_group_id,
+                name=group.name,
+                description=group.description,
+                category=AlgorithmComplexity.COMPLEX,
+                inputs=[
+                    AlgorithmFormInput(
+                        input_label="group_id",
+                        input_type=AlgorithmInputType.STRING,
+                        data=group.group_id,
+                    )
+                ],
+                fulfilled=True,
+                confidence=1.0,
+                problematic_elements=[],
+                default_points=group.maxPoints,
+                custom_score=None,
+            )
+        )
+
+        # Persist rubric
+        with open(os.path.join(base_path, "rubric.json"), "w") as f:
+            f.write(_rubric.model_dump_json())
+
+        return _rubric
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to add group to rubric: {str(e)}")
 
 
 if __name__ == "__main__":
