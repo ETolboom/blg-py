@@ -4,14 +4,39 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel, ValidationError, field_validator
+from pydantic import BaseModel, ValidationError, field_validator, model_validator
+
+
+def calculate_template_max_points(nodes: list[dict]) -> float:
+    """Calculate maximum points as sum of all node scores in workflow"""
+    total = sum(
+        node.get('data', {}).get('score', 0)
+        for node in nodes
+    )
+    return round(total, 2)  # Round to avoid floating-point errors
+
+
+def calculate_group_max_points(
+    template_ids: list[str],
+    manager: 'TemplateManager'
+) -> float:
+    """Calculate group max points as MAX of member template maxPoints"""
+    max_points_values = []
+    for template_id in template_ids:
+        template = manager.get_template(template_id)
+        if template:
+            max_points_values.append(template.maxPoints)
+        else:
+            print(f"Warning: Template '{template_id}' not found")
+
+    return max(max_points_values) if max_points_values else 0.0
 
 
 class RuleTemplate(BaseModel):
     id: str
     name: str
     description: str
-    maxPoints: float
+    maxPoints: Optional[float] = None
     nodes: list[dict] | str  # Using dict to match the flexible Node structure, or string for serialized JSON
     edges: list[dict] | str  # Using dict to match the flexible Edge structure, or string for serialized JSON
 
@@ -26,6 +51,22 @@ class RuleTemplate(BaseModel):
                 return []
         return v if v is not None else []
 
+    @model_validator(mode='after')
+    def validate_max_points(self):
+        """Auto-calculate maxPoints from node scores"""
+        # Ensure nodes is a list (not a string)
+        nodes = self.nodes if isinstance(self.nodes, list) else []
+        calculated = calculate_template_max_points(nodes)
+
+        # Log warning if stored value differs
+        if self.maxPoints is not None and abs(self.maxPoints - calculated) > 0.01:
+            print(f"Warning: Template {self.id}: Stored maxPoints ({self.maxPoints}) "
+                  f"differs from calculated ({calculated}). Using calculated value.")
+
+        # Always use calculated value
+        self.maxPoints = calculated
+        return self
+
 
 class GroupCondition(str, Enum):
     """Condition for evaluating template groups"""
@@ -38,7 +79,7 @@ class TemplateGroup(BaseModel):
     group_id: str              # Unique identifier (e.g., "part_1_group")
     name: str                  # Display name in rubric
     description: str           # Criterion description
-    maxPoints: float           # Maximum points for the criterion
+    maxPoints: Optional[float] = None  # Maximum points for the criterion (auto-calculated if not provided)
     condition: GroupCondition  # "XOR" or "AND"
     template_ids: list[str]    # List of template IDs (min 1)
 
@@ -191,6 +232,16 @@ class TemplateManager:
         """Save or update a group"""
         # Validate that all referenced templates exist
         self.validate_group_templates(group)
+
+        # Calculate maxPoints from member templates
+        calculated_max = calculate_group_max_points(group.template_ids, self)
+
+        # Log warning if differs
+        if group.maxPoints is not None and abs(group.maxPoints - calculated_max) > 0.01:
+            print(f"Warning: Group {group.group_id}: Stored maxPoints ({group.maxPoints}) "
+                  f"differs from calculated ({calculated_max}). Using calculated value.")
+
+        group.maxPoints = calculated_max
 
         group_path = self._get_group_path(group.group_id)
 
