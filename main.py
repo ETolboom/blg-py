@@ -994,6 +994,14 @@ async def add_behavioral_group_to_rubric(group_id: str, group: TemplateGroup) ->
         template_manager.validate_group_templates(group)
         template_manager.save_group(group)
 
+        # CONSUMPTION LOGIC: Remove individual templates from rubric
+        for template_id in group.template_ids:
+            index = next((i for i, c in enumerate(_rubric.criteria)
+                          if c.id == template_id), -1)
+            if index != -1:
+                print(f"[Consumption] Removing template '{template_id}' from rubric")
+                del _rubric.criteria[index]
+
         # Use "group:" prefix to distinguish from individual templates in rubric
         prefixed_group_id = f"group:{group.group_id}"
 
@@ -1035,6 +1043,134 @@ async def add_behavioral_group_to_rubric(group_id: str, group: TemplateGroup) ->
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to add group to rubric: {str(e)}")
+
+
+@app.delete("/rubric/criteria/{criterion_id}")
+async def delete_rubric_criterion(criterion_id: str) -> dict:
+    global _rubric
+
+    try:
+        if _rubric is None:
+            raise HTTPException(status_code=404, detail="No rubric loaded")
+
+        # Find criterion
+        index = next((i for i, c in enumerate(_rubric.criteria)
+                      if c.id == criterion_id), -1)
+
+        if index == -1:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Criterion '{criterion_id}' not found in rubric"
+            )
+
+        # Check if group (needs unmerge) or individual template (simple delete)
+        if criterion_id.startswith("group:"):
+            return await _unmerge_and_delete_group(criterion_id, index)
+        else:
+            # Simple deletion for individual templates
+            del _rubric.criteria[index]
+
+            with open(os.path.join(base_path, "rubric.json"), "w") as f:
+                f.write(_rubric.model_dump_json())
+
+            return {
+                "message": f"Criterion '{criterion_id}' deleted successfully",
+                "unmerged_templates": []
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete criterion: {str(e)}"
+        )
+
+
+async def _unmerge_and_delete_group(criterion_id: str, index: int) -> dict:
+    global _rubric
+
+    # Extract group_id (remove "group:" prefix)
+    group_id = criterion_id[6:]
+
+    # Load group from disk
+    template_manager = templates.manager.get_manager()
+    group = template_manager.get_group(group_id)
+
+    if group is None:
+        # Group file not found - cleanup orphaned reference
+        del _rubric.criteria[index]
+        with open(os.path.join(base_path, "rubric.json"), "w") as f:
+            f.write(_rubric.model_dump_json())
+
+        return {
+            "message": f"Group criterion '{criterion_id}' deleted (group file not found)",
+            "unmerged_templates": [],
+            "warning": "Group metadata not found - could not restore templates"
+        }
+
+    # Restore templates at group's position
+    restored = []
+    missing = []
+    insert_position = index  # Insert where the group was
+
+    for template_id in group.template_ids:
+        template = template_manager.get_template(template_id)
+
+        if template is None:
+            missing.append(template_id)
+            print(f"[Unmerge] Warning: Template '{template_id}' not found on disk")
+            continue
+
+        # Check if already in rubric (avoid duplicates)
+        exists = any(c.id == template_id for c in _rubric.criteria)
+        if exists:
+            print(f"[Unmerge] Template '{template_id}' already in rubric, skipping")
+            continue
+
+        # Insert template at group's position
+        _rubric.criteria.insert(
+            insert_position,
+            RubricCriterion(
+                id=template.id,
+                name=template.name,
+                description=template.description,
+                category=AlgorithmComplexity.COMPLEX,
+                inputs=[
+                    AlgorithmFormInput(
+                        input_label="template_id",
+                        input_type=AlgorithmInputType.STRING,
+                        data=template.id,
+                    ),
+                ],
+                fulfilled=True,
+                confidence=1.0,
+                problematic_elements=[],
+                default_points=template.maxPoints,
+                custom_score=None,
+            )
+        )
+
+        restored.append(template_id)
+        insert_position += 1  # Next template inserts after this one
+        print(f"[Unmerge] Restored template '{template_id}' at position {insert_position-1}")
+
+    # Delete group criterion (now at insert_position due to insertions)
+    del _rubric.criteria[insert_position]
+
+    # Save rubric
+    with open(os.path.join(base_path, "rubric.json"), "w") as f:
+        f.write(_rubric.model_dump_json())
+
+    result = {
+        "message": f"Group '{criterion_id}' deleted and unmerged",
+        "unmerged_templates": restored
+    }
+
+    if missing:
+        result["warning"] = f"Some templates not found: {missing}"
+
+    return result
 
 
 if __name__ == "__main__":
