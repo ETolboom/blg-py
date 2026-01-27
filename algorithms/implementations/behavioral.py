@@ -165,6 +165,7 @@ class TemplateEvaluationResult:
     """Result from evaluating a single template within a group"""
     template_id: str
     template_name: str
+    description: str
     score: float
     confidence: float
     match_details: list[MatchDetail]
@@ -851,6 +852,7 @@ class BehavioralGroupEvaluator:
                 template_results.append(TemplateEvaluationResult(
                     template_id=template_id,
                     template_name=template_id,
+                    description="Template not found",
                     score=0.0,
                     confidence=0.0,
                     match_details=[],
@@ -865,6 +867,7 @@ class BehavioralGroupEvaluator:
                 template_results.append(TemplateEvaluationResult(
                     template_id=template_id,
                     template_name=template.name,
+                    description=template.description,
                     score=result.total_score,
                     confidence=result.confidence,
                     match_details=result.match_details,
@@ -876,6 +879,7 @@ class BehavioralGroupEvaluator:
                 template_results.append(TemplateEvaluationResult(
                     template_id=template_id,
                     template_name=template.name,
+                    description=template.description,
                     score=0.0,
                     confidence=0.0,
                     match_details=[],

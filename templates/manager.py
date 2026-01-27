@@ -74,6 +74,16 @@ class GroupCondition(str, Enum):
     AND = "AND"  # All templates must match (required features)
 
 
+class TemplateEvaluationSummary(BaseModel):
+    """Summary of individual template evaluation within a group"""
+    template_id: str
+    template_name: str
+    description: Optional[str] = None  # Optional for backward compatibility
+    score: float
+    confidence: float
+    success: bool
+
+
 class TemplateGroup(BaseModel):
     """Group of templates evaluated together as one rubric criterion"""
     group_id: str              # Unique identifier (e.g., "part_1_group")
@@ -90,6 +100,7 @@ class TemplateGroup(BaseModel):
     fulfilled: Optional[bool] = None                # Whether group requirements met
     confidence: Optional[float] = None              # Overall confidence score
     problematic_elements: Optional[list[str]] = None  # BPMN elements with issues
+    template_results: Optional[list[TemplateEvaluationSummary]] = None  # Individual template scores
 
     @field_validator('template_ids')
     @classmethod
@@ -300,6 +311,19 @@ class TemplateManager:
         group.fulfilled = evaluation_result.fulfilled
         group.confidence = evaluation_result.overall_confidence
         group.problematic_elements = evaluation_result.problematic_elements
+
+        # Save individual template results
+        group.template_results = [
+            TemplateEvaluationSummary(
+                template_id=tr.template_id,
+                template_name=tr.template_name,
+                description=tr.description,
+                score=tr.score,
+                confidence=tr.confidence,
+                success=tr.success
+            )
+            for tr in evaluation_result.template_results
+        ]
 
         # Save to disk
         return self.save_group(group)
