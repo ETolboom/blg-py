@@ -29,10 +29,10 @@ def check_task_coverage(
     threshold: float = 0.8
 ) -> SanityCheckResult:
     """
-    Compare tasks and labeled events between reference and student submissions globally.
+    Compare tasks between reference and student submissions globally.
 
-    For each task/event in the reference model, find the best matching task/event in the
-    student model. Tasks/events that don't match above the threshold are marked as
+    For each task in the reference model, find the best matching task in the
+    student model. Tasks that don't match above the threshold are marked as
     missing/unmatched.
 
     Args:
@@ -41,22 +41,21 @@ def check_task_coverage(
         threshold: Minimum similarity score to consider a match (default: 0.8)
 
     Returns:
-        SanityCheckResult with pairings, missing tasks/events, and coverage stats
+        SanityCheckResult with pairings, missing tasks, and coverage stats
     """
     # Parse both models
     reference_model = Bpmn(reference_xml)
     student_model = Bpmn(student_xml)
 
-    # Extract all tasks and labeled events from both models
+    # Extract all tasks from both models (excluding events, gateways, etc.)
     reference_tasks = []
     reference_task_labels = []
     for pool in reference_model.pools:
         for element in pool.elements:
-            # Include tasks, activities, and labeled events (excluding gateways, unlabeled events, etc.)
+            # Include only tasks and activities
             if element.label and (
                 "task" in element.name.lower() or
-                element.name in ["task", "subProcess"] or
-                "event" in element.name.lower()
+                element.name in ["task", "subProcess"]
             ):
                 reference_tasks.append(element)
                 reference_task_labels.append(element.label)
@@ -67,14 +66,13 @@ def check_task_coverage(
         for element in pool.elements:
             if element.label and (
                 "task" in element.name.lower() or
-                element.name in ["task", "subProcess"] or
-                "event" in element.name.lower()
+                element.name in ["task", "subProcess"]
             ):
                 student_tasks.append(element)
                 student_task_labels.append(element.label)
 
-    print(f"[SanityCheck] Found {len(reference_tasks)} reference tasks/events")
-    print(f"[SanityCheck] Found {len(student_tasks)} student tasks/events")
+    print(f"[SanityCheck] Found {len(reference_tasks)} reference tasks")
+    print(f"[SanityCheck] Found {len(student_tasks)} student tasks")
 
     # Handle edge cases
     if len(reference_tasks) == 0:
