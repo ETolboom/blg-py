@@ -2,7 +2,7 @@ import asyncio
 import io
 import os
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, UploadFile
 from openpyxl import Workbook
 from pydantic_core import from_json
 
@@ -82,6 +82,31 @@ async def export_all_submission(request: Request) -> Response:
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=submissions.xlsx"},
     )
+
+
+@router.post("/submissions")
+async def upload_submissions(files: list[UploadFile], request: Request) -> list[dict]:
+    """Upload one or more BPMN files to the submissions folder."""
+    base_path = request.app.state.base_path
+    submissions_path = os.path.join(base_path, "submissions")
+    os.makedirs(submissions_path, exist_ok=True)
+
+    uploaded = []
+    for file in files:
+        if not file.filename or not file.filename.endswith(".bpmn"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"'{file.filename}' is not a .bpmn file"
+            )
+
+        dest = os.path.join(submissions_path, file.filename)
+        content = await file.read()
+        with open(dest, "wb") as f:
+            f.write(content)
+
+        uploaded.append({"filename": file.filename, "name": file.filename.replace(".bpmn", "")})
+
+    return uploaded
 
 
 @router.get("/submissions/{filename}")
