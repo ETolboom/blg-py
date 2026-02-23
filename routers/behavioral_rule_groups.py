@@ -37,8 +37,8 @@ async def get_rule_group(group_id: str) -> BehavioralRuleGroup:
 
 
 @router.post("/behavioral-rule-groups")
-async def create_rule_group(group: BehavioralRuleGroup) -> BehavioralRuleGroup:
-    """Create new template group"""
+async def create_rule_group(group: BehavioralRuleGroup, request: Request) -> BehavioralRuleGroup:
+    """Create new template group and auto-evaluate it if a reference model is loaded"""
     try:
         rule_manager = rules.manager.get_manager()
 
@@ -51,7 +51,16 @@ async def create_rule_group(group: BehavioralRuleGroup) -> BehavioralRuleGroup:
 
         # Validate that all templates exist
         rule_manager.validate_group_rules(group)
-        return rule_manager.save_group(group)
+        saved_group = rule_manager.save_group(group)
+
+        # Auto-evaluate if a reference model is available
+        rubric = request.app.state.rubric
+        if rubric and rubric.assignment and rubric.assignment.reference_xml:
+            evaluator = BehavioralGroupEvaluator(model_xml=rubric.assignment.reference_xml)
+            result = evaluator.evaluate_group(saved_group)
+            saved_group = rule_manager.update_group_evaluation(saved_group.group_id, result)
+
+        return saved_group
     except HTTPException:
         raise
     except ValueError as e:
@@ -154,7 +163,7 @@ async def add_behavioral_group_to_rubric(group_id: str, group: BehavioralRuleGro
         rule_manager.save_group(group)
 
         # CONSUMPTION LOGIC: Remove individual templates from rubric
-        for rule_id in group.template_ids:
+        for rule_id in group.rule_ids:
             index = next((i for i, c in enumerate(rubric.criteria)
                           if c.id == rule_id), -1)
             if index != -1:
@@ -190,6 +199,25 @@ async def add_behavioral_group_to_rubric(group_id: str, group: BehavioralRuleGro
                 custom_score=None,
             )
         )
+
+        # Auto-evaluate the group and overwrite the placeholder criterion values
+        if rubric.assignment and rubric.assignment.reference_xml:
+            evaluator = BehavioralGroupEvaluator(model_xml=rubric.assignment.reference_xml)
+            result = evaluator.evaluate_group(group)
+
+            criterion_index = next(
+                (i for i, c in enumerate(rubric.criteria) if c.id == prefixed_group_id), -1
+            )
+            if criterion_index != -1:
+                rubric.criteria[criterion_index].fulfilled = result.fulfilled
+                rubric.criteria[criterion_index].confidence = result.overall_confidence
+                rubric.criteria[criterion_index].problematic_elements = result.problematic_elements
+                earned = result.earned_points
+                if round(earned, 2) != round(group.maxPoints or 0.0, 2):
+                    rubric.criteria[criterion_index].custom_score = earned
+
+            # Persist evaluation results into the group file
+            rule_manager.update_group_evaluation(group.group_id, result)
 
         # Update app state
         request.app.state.rubric = rubric
