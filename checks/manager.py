@@ -5,19 +5,19 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from algorithms import Algorithm, AlgorithmFormInput
+from checks import Check, CheckFormInput
 
-algorithm_classes: list[type[Algorithm]] = []
+check_classes: list[type[Check]] = []
 
 
-def load_algorithms() -> None:
-    implementations_path = Path("algorithms/implementations")
+def load_checks() -> None:
+    implementations_path = Path("checks/implementations")
     if not implementations_path.exists():
         raise FileNotFoundError(
             f"Could not find plugin directory: {implementations_path}"
         )
 
-    algorithm_names = []
+    check_names = []
 
     for root, dirs, files in os.walk(implementations_path):
         for file in files:
@@ -32,8 +32,8 @@ def load_algorithms() -> None:
                         if cls.__module__ != module_name:
                             continue
 
-                        # Skip classes that are not subclasses of Algorithm or are abstract
-                        if cls is Algorithm or not issubclass(cls, Algorithm):
+                        # Skip classes that are not subclasses of Check or are abstract
+                        if cls is Check or not issubclass(cls, Check):
                             continue
                         if inspect.isabstract(cls):
                             continue
@@ -45,8 +45,8 @@ def load_algorithms() -> None:
                             }
                         )
 
-                        algorithm_classes.append(cls)
-                        algorithm_names.append(cls.id)
+                        check_classes.append(cls)
+                        check_names.append(cls.id)
                 except TypeError as e:
                     raise Exception(
                         f"{module_name} failed to import due to a type error: {e}"
@@ -60,39 +60,39 @@ def load_algorithms() -> None:
                 except Exception as e:
                     raise Exception(f"could not load {module_name}: {e}")
 
-    print(f"Algorithms loaded successfully ({len(algorithm_classes)}).")
-    print(f"Found the following algorithms:\n{algorithm_names}")
+    print(f"Checks loaded successfully ({len(check_classes)}).")
+    print(f"Found the following checks:\n{check_names}")
 
 
-class AlgorithmManager:
-    algorithms: dict[str, Algorithm] = {}
+class CheckManager:
+    checks: dict[str, Check] = {}
 
     def __init__(self, model_xml: str):
         self.model_xml: str = model_xml
-        self.algorithms: dict[str, Algorithm] = {}
+        self.checks: dict[str, Check] = {}
 
-        for algorithm_class in algorithm_classes:
-            algorithm = algorithm_class(model_xml=model_xml)
-            self.algorithms[algorithm.id] = algorithm
+        for check_class in check_classes:
+            check = check_class(model_xml=model_xml)
+            self.checks[check.id] = check
 
-    def list_algorithms(
+    def list_checks(
         self,
-    ) -> list[dict[str, str | list[AlgorithmFormInput]]]:
-        algorithms = []
-        for algorithm in self.algorithms.values():
-            entry: dict[str, str | list[AlgorithmFormInput]] = {
-                "id": algorithm.id,
-                "inputs": algorithm.inputs(),
-                "category": algorithm.algorithm_kind,
-                "name": algorithm.name,
+    ) -> list[dict[str, str | list[CheckFormInput]]]:
+        checks = []
+        for check in self.checks.values():
+            entry: dict[str, str | list[CheckFormInput]] = {
+                "id": check.id,
+                "inputs": check.inputs(),
+                "category": check.check_complexity,
+                "name": check.name,
             }
-            algorithms.append(entry)
+            checks.append(entry)
 
-        return algorithms
+        return checks
 
-    def get_algorithm(self, name: str) -> Algorithm:
-        return self.algorithms[name]
+    def get_check(self, name: str) -> Check:
+        return self.checks[name]
 
 
-def get_manager(model_xml: str) -> AlgorithmManager:
-    return AlgorithmManager(model_xml=model_xml)
+def get_manager(model_xml: str) -> CheckManager:
+    return CheckManager(model_xml=model_xml)

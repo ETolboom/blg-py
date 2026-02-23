@@ -5,26 +5,26 @@ import spacy
 import torch
 from thefuzz import fuzz
 
-from algorithms import (
-    Algorithm,
-    AlgorithmComplexity,
-    AlgorithmFormInput,
-    AlgorithmResult,
+from checks import (
+    Check,
+    CheckComplexity,
+    CheckFormInput,
+    CheckResult,
 )
 from utils import extract_all_tasks, get_elements_by_type, ExtractedTask
 from utils.similarity import create_similarity_matrix
 
 
-class AtomicityCheck(Algorithm):
+class AtomicityCheck(Check):
     id: ClassVar[str] = "atomicity_check"
     name: ClassVar[str] = "Label Atomicity"
     description: ClassVar[str] = "Check the task labels for atomicity"
-    algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.SIMPLE
+    check_complexity: ClassVar[CheckComplexity] = CheckComplexity.SIMPLE
     threshold: ClassVar[float] = 0.85
 
     def analyze(
-        self, inputs: list[AlgorithmFormInput] | None = None
-    ) -> AlgorithmResult:
+        self, inputs: list[CheckFormInput] | None = None
+    ) -> CheckResult:
         tasks: list[ExtractedTask] = extract_all_tasks(self.model_xml)
 
         problematic_elements = []
@@ -34,34 +34,34 @@ class AtomicityCheck(Algorithm):
             if not (single_action or atomicity >= self.threshold):
                 problematic_elements.append(task.id)
 
-        return AlgorithmResult(
+        return CheckResult(
             id=self.id,
             name=self.name,
             description=self.description,
-            category=self.algorithm_kind,
+            check_complexity=self.check_complexity,
             fulfilled=(len(problematic_elements) == 0),
             problematic_elements=problematic_elements,
         )
 
-    def inputs(self) -> list[AlgorithmFormInput]:
+    def inputs(self) -> list[CheckFormInput]:
         return []
 
     def is_applicable(self) -> bool:
         return True
 
 
-class ExactDuplicateTasks(Algorithm):
+class ExactDuplicateTasks(Check):
     id: ClassVar[str] = "exact_duplicate_tasks"
     name: ClassVar[str] = "Exact Duplicate Tasks"
     description: ClassVar[str] = (
         "Check the model for any duplicate tasks based on fuzzy matching"
     )
-    algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.SIMPLE
+    check_complexity: ClassVar[CheckComplexity] = CheckComplexity.SIMPLE
     threshold: ClassVar[float] = 0.90
 
     def analyze(
-        self, inputs: list[AlgorithmFormInput] | None = None
-    ) -> AlgorithmResult:
+        self, inputs: list[CheckFormInput] | None = None
+    ) -> CheckResult:
         tasks: list[ExtractedTask] = extract_all_tasks(self.model_xml)
 
         if len(tasks) == 0:
@@ -82,34 +82,34 @@ class ExactDuplicateTasks(Algorithm):
 
         parse_duplicates(find_fuzzy_duplicates(tasks, threshold=self.threshold))
 
-        return AlgorithmResult(
+        return CheckResult(
             id=self.id,
             name=self.name,
             description=self.description,
-            category=self.algorithm_kind,
+            check_complexity=self.check_complexity,
             fulfilled=(len(problematic_elements) == 0),
             problematic_elements=problematic_elements,
         )
 
-    def inputs(self) -> list[AlgorithmFormInput]:
+    def inputs(self) -> list[CheckFormInput]:
         return []
 
     def is_applicable(self) -> bool:
         return True
 
 
-class SemanticDuplicateTasks(Algorithm):
+class SemanticDuplicateTasks(Check):
     id: ClassVar[str] = "semantic_duplicate_tasks"
     name: ClassVar[str] = "Semantically Duplicate Tasks"
     description: ClassVar[str] = (
         "Check the model for any duplicate tasks based on semantic matching"
     )
-    algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.SIMPLE
+    check_complexity: ClassVar[CheckComplexity] = CheckComplexity.SIMPLE
     threshold: ClassVar[float] = 0.75
 
     def analyze(
-        self, inputs: list[AlgorithmFormInput] | None = None
-    ) -> AlgorithmResult:
+        self, inputs: list[CheckFormInput] | None = None
+    ) -> CheckResult:
         tasks: list[ExtractedTask] = extract_all_tasks(self.model_xml)
         if len(tasks) == 0:
             raise Exception("Cannot identify exact duplicates: no tasks found")
@@ -129,16 +129,16 @@ class SemanticDuplicateTasks(Algorithm):
 
         parse_duplicates(find_semantic_duplicates(tasks, threshold=self.threshold))
 
-        return AlgorithmResult(
+        return CheckResult(
             id=self.id,
             name=self.name,
             description=self.description,
-            category=self.algorithm_kind,
+            check_complexity=self.check_complexity,
             fulfilled=(len(problematic_elements) == 0),
             problematic_elements=problematic_elements,
         )
 
-    def inputs(self) -> list[AlgorithmFormInput]:
+    def inputs(self) -> list[CheckFormInput]:
         return []
 
     def is_applicable(self) -> bool:

@@ -3,12 +3,12 @@ import os
 
 from fastapi import APIRouter, HTTPException, Request
 
-import algorithms.manager
-import templates.manager
-from algorithms import AlgorithmComplexity, AlgorithmFormInput, AlgorithmInputType, AlgorithmResult
-from algorithms.implementations.behavioral import WorkflowData, BehavioralRuleCheck
+import checks.manager
+import rules.manager
+from checks import CheckComplexity, CheckFormInput, CheckInputType, CheckResult
+from checks.implementations.behavioral import WorkflowData, BehavioralRuleCheck
 from rubric import OnboardingRubric, Rubric, RubricCriterion
-from templates.manager import RuleTemplate
+from rules.manager import BehavioralRule
 
 router = APIRouter()
 
@@ -30,21 +30,21 @@ async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric, request:
         if onboarding_rubric.assignment and onboarding_rubric.assignment.reference_xml
         else ""
     )
-    manager = algorithms.manager.get_manager(ref_xml)
+    manager = checks.manager.get_manager(ref_xml)
 
     parsed_algorithms = []
-    if len(onboarding_rubric.algorithms) != 0:
-        for algorithm in onboarding_rubric.algorithms:
+    if len(onboarding_rubric.checks) != 0:
+        for algorithm in onboarding_rubric.checks:
             # Since we don't ask for inputs during onboarding
             # we assume that inputs are [] so the algorithm tries to
             # do a first pass / a best effort analysis.
-            result = manager.get_algorithm(algorithm).analyze()
+            result = manager.get_check(algorithm).analyze()
             parsed_algorithms.append(
                 RubricCriterion(
                     id=result.id,
                     name=result.name,
                     description=result.description,
-                    category=result.category,
+                    check_complexity=result.check_complexity,
                     fulfilled=result.fulfilled,
                     inputs=result.inputs,
                     confidence=result.confidence,
@@ -70,7 +70,7 @@ async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric, request:
 
 
 @router.post("/rubric/criteria/behavioral/analyze")
-def analyze_behavioral_criteria(data: WorkflowData, request: Request) -> AlgorithmResult:
+def analyze_behavioral_criteria(data: WorkflowData, request: Request) -> CheckResult:
     rubric = request.app.state.rubric
 
     try:
@@ -81,7 +81,7 @@ def analyze_behavioral_criteria(data: WorkflowData, request: Request) -> Algorit
 
 
 @router.post("/rubric/criteria/behavioral/{behavioral_id}")
-async def add_behavioral_criteria(behavioral_id: str, inputs: RuleTemplate, request: Request) -> Rubric:
+async def add_behavioral_criteria(behavioral_id: str, inputs: BehavioralRule, request: Request) -> Rubric:
     base_path = request.app.state.base_path
     rubric = request.app.state.rubric
 
@@ -93,12 +93,12 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: RuleTemplate, requ
 
         # If nodes/edges are empty, load template from disk
         if nodes_empty or edges_empty:
-            template_manager = templates.manager.get_manager()
-            loaded_template = template_manager.get_template(inputs.id)
+            template_manager = rules.manager.get_manager()
+            loaded_rule = template_manager.get_rule(inputs.id)
 
-            if loaded_template is not None:
+            if loaded_rule is not None:
                 # Use loaded template data
-                inputs = loaded_template
+                inputs = loaded_rule
 
 
         # Prevent any duplicates by removing old instances of the algorithm.
@@ -124,11 +124,11 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: RuleTemplate, requ
                 id=inputs.id,
                 name=inputs.name,
                 description=inputs.description,
-                category=AlgorithmComplexity.COMPLEX,
+                check_complexity=CheckComplexity.COMPLEX,
                 inputs=[
-                    AlgorithmFormInput(
+                    CheckFormInput(
                         input_label="template_id",
-                        input_type=AlgorithmInputType.STRING,
+                        input_type=CheckInputType.STRING,
                         data=inputs.id,  # Only store the template ID
                     ),
                 ],
@@ -158,7 +158,7 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: RuleTemplate, requ
 
 @router.post("/rubric/criteria/{algorithm_id}")
 async def update_criteria(
-    algorithm_id: str, inputs: list[AlgorithmFormInput], request: Request
+    algorithm_id: str, inputs: list[CheckFormInput], request: Request
 ) -> Rubric:
     base_path = request.app.state.base_path
     rubric = request.app.state.rubric
@@ -177,16 +177,16 @@ async def update_criteria(
             del rubric.criteria[index]
 
         if rubric and rubric.assignment and rubric.assignment.reference_xml:
-            manager = algorithms.manager.get_manager(rubric.assignment.reference_xml)
+            manager = checks.manager.get_manager(rubric.assignment.reference_xml)
         else:
-            manager = algorithms.manager.get_manager("")
-        result = manager.get_algorithm(algorithm_id).analyze(inputs=inputs)
+            manager = checks.manager.get_manager("")
+        result = manager.get_check(algorithm_id).analyze(inputs=inputs)
         rubric.criteria.append(
             RubricCriterion(
                 id=algorithm_id,
                 name=result.name,
                 description=result.description,
-                category=result.category,
+                check_complexity=result.check_complexity,
                 fulfilled=result.fulfilled,
                 inputs=result.inputs,
                 confidence=result.confidence,
@@ -284,7 +284,7 @@ async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: st
     group_id = criterion_id[6:]
 
     # Load group from disk
-    template_manager = templates.manager.get_manager()
+    template_manager = rules.manager.get_manager()
     group = template_manager.get_group(group_id)
 
     if group is None:
@@ -308,8 +308,8 @@ async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: st
     missing = []
     insert_position = index  # Insert where the group was
 
-    for template_id in group.template_ids:
-        template = template_manager.get_template(template_id)
+    for template_id in group.rule_ids:
+        template = template_manager.get_rule(template_id)
 
         if template is None:
             missing.append(template_id)
@@ -329,11 +329,11 @@ async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: st
                 id=template.id,
                 name=template.name,
                 description=template.description,
-                category=AlgorithmComplexity.COMPLEX,
+                check_complexity=CheckComplexity.COMPLEX,
                 inputs=[
-                    AlgorithmFormInput(
+                    CheckFormInput(
                         input_label="template_id",
-                        input_type=AlgorithmInputType.STRING,
+                        input_type=CheckInputType.STRING,
                         data=template.id,
                     ),
                 ],

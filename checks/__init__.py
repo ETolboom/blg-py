@@ -10,52 +10,52 @@ from pydantic import (
 )
 
 
-class AlgorithmInputType(str, Enum):
+class CheckInputType(str, Enum):
     STRING = "string"
     INTEGER = "integer"
     KEY_VALUE = "key-value"
     SELECTION = "selection"
 
-class AlgorithmKeyValuePair(BaseModel):
+class CheckKeyValuePair(BaseModel):
     key: str
     value: list[str]
 
-class AlgorithmSelectionPair(BaseModel):
+class CheckSelectionPair(BaseModel):
     label: str
     type: str
 
-class AlgorithmSelectionType(BaseModel):
+class CheckSelectionType(BaseModel):
     placeholder: str
     accepted_values: list[str]
-    pairs: list[AlgorithmSelectionPair]
+    pairs: list[CheckSelectionPair]
 
-class AlgorithmKeyValueType(BaseModel):
-    pairs: list[AlgorithmKeyValuePair] = []
+class CheckKeyValueType(BaseModel):
+    pairs: list[CheckKeyValuePair] = []
     key_label: str = Field(description="Label for outer key e.g. Pool-Name")
     value_label: str = Field(description="Label for inner list items e.g. Lane-Name")
 
 
-TYPE_MAP: dict[AlgorithmInputType, type] = {
-    AlgorithmInputType.STRING: str,
-    AlgorithmInputType.INTEGER: int,
-    AlgorithmInputType.KEY_VALUE: AlgorithmKeyValuePair,
-    AlgorithmInputType.SELECTION: AlgorithmSelectionType,
+TYPE_MAP: dict[CheckInputType, type] = {
+    CheckInputType.STRING: str,
+    CheckInputType.INTEGER: int,
+    CheckInputType.KEY_VALUE: CheckKeyValuePair,
+    CheckInputType.SELECTION: CheckSelectionType,
 }
 
 
-class AlgorithmFormInput(BaseModel):
+class CheckFormInput(BaseModel):
     """This class describes the form elements required for the input for the algorithm."""
 
     # Label for the input
     input_label: str
 
     # Input type e.g. string, number, key-value
-    input_type: AlgorithmInputType
+    input_type: CheckInputType
 
     # Allow multiple inputs of this type
     multiple: bool = False
 
-    data: str | int | AlgorithmKeyValueType | AlgorithmSelectionType
+    data: str | int | CheckKeyValueType | CheckSelectionType
 
     @classmethod
     @field_validator("data")
@@ -69,35 +69,33 @@ class AlgorithmFormInput(BaseModel):
                 raise ValueError("String input must not be empty")
             case int() if v is None:  # number is null
                 raise ValueError("Integer input must not be null")
-            case AlgorithmKeyValueType() if not v.pairs:  # dict is empty
+            case CheckKeyValueType() if not v.pairs:  # dict is empty
                 raise ValueError("Key-value input must contain at least one pair")
-            case AlgorithmSelectionType() if not v.accepted_values:
+            case CheckSelectionType() if not v.accepted_values:
                 raise ValueError("Possible selection must contain at least one possible value")
 
         return v
 
 
-class AlgorithmResult(BaseModel):
+class CheckComplexity(str, Enum):
+    SIMPLE = "Quality Checks (Model-Agnostic)"
+    CONFIGURABLE = "Simple (Model-Dependent)"
+    COMPLEX = "Complex (Model-Dependent)"
+
+class CheckResult(BaseModel):
     """This class describes the format in which the algorithm is presented."""
 
     id: str = "algorithm_name"
     name: str = "Algorithm X"
-    category: str = "Category"
+    check_complexity: CheckComplexity = None
     description: str = "This algorithm X checks for Y"
     fulfilled: bool | None = False
     confidence: float = 1.0
     problematic_elements: list[str] = []
-    inputs: list[AlgorithmFormInput] = []
+    inputs: list[CheckFormInput] = []
 
-
-class AlgorithmComplexity(str, Enum):
-    SIMPLE = "Simple"
-    CONFIGURABLE = "Configurable"
-    COMPLEX = "Complex"
-
-
-class Algorithm(BaseModel, ABC):
-    """Every algorithm must implement this class."""
+class Check(BaseModel, ABC):
+    """Every check must implement this class."""
 
     model_config = ConfigDict(extra="ignore", strict=True)
 
@@ -105,23 +103,23 @@ class Algorithm(BaseModel, ABC):
     id: ClassVar[str]
     name: ClassVar[str]
     description: ClassVar[str]
-    algorithm_kind: ClassVar[AlgorithmComplexity]
+    check_complexity: ClassVar[CheckComplexity]
     threshold: ClassVar[float] = 0.0
 
     # This field must be provided at instantiation
     model_xml: str
 
     @abstractmethod
-    def analyze(self, inputs: list[AlgorithmFormInput] | None) -> AlgorithmResult:
+    def analyze(self, inputs: list[CheckFormInput] | None) -> CheckResult:
         """Analyze a given property based on inputs if available"""
         pass
 
     @abstractmethod
-    def inputs(self) -> list[AlgorithmFormInput]:
-        """Return the available form inputs for the algorithm"""
+    def inputs(self) -> list[CheckFormInput]:
+        """Return the available form inputs for the check"""
         pass
 
     @abstractmethod
     def is_applicable(self) -> bool:
-        """Check to see whether an algorithm is applicable to a given model"""
+        """Check to see whether a check is applicable to a given model"""
         pass

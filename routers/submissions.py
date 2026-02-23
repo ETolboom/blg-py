@@ -2,8 +2,8 @@ import asyncio
 import io
 import os
 
-import pandas as pd
 from fastapi import APIRouter, HTTPException, Request, Response
+from openpyxl import Workbook
 from pydantic_core import from_json
 
 from rubric import Rubric, RubricCriterion
@@ -55,25 +55,26 @@ async def export_all_submission(request: Request) -> Response:
     submissions = [file for file in submissions if file.endswith(".json")]
 
     excel_buffer = io.BytesIO()
+    workbook = Workbook()
 
-    with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
-        for submission in submissions:
-            submission_path = os.path.join(base_path, "submissions", submission)
-            with open(submission_path, encoding="utf-8") as f:
-                submission_json = f.read()
+    for submission in submissions:
+        submission_path = os.path.join(base_path, "submissions", submission)
+        with open(submission_path, encoding="utf-8") as f:
+            submission_json = f.read()
 
-            try:
-                parsed_rubric: Rubric = Rubric.model_validate(
-                    from_json(submission_json, allow_partial=True)
-                )
-            except Exception as parse_error:
-                raise HTTPException(status_code=500, detail=str(parse_error))
+        try:
+            parsed_rubric: Rubric = Rubric.model_validate(
+                from_json(submission_json, allow_partial=True)
+            )
+        except Exception as parse_error:
+            raise HTTPException(status_code=500, detail=str(parse_error))
 
-            parsed_rubric.to_excel_worksheet(writer, submission.replace(".json", ""))
+        parsed_rubric.to_excel_worksheet(workbook, submission.replace(".json", ""))
 
-        if "Sheet" in writer.book.sheetnames:
-            writer.book.remove(writer.book["Sheet"])
+    if "Sheet" in workbook.sheetnames:
+        workbook.remove(workbook["Sheet"])
 
+    workbook.save(excel_buffer)
     excel_buffer.seek(0)
 
     return Response(

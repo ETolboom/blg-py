@@ -6,10 +6,10 @@ import uvicorn
 from fastapi import FastAPI
 from pydantic import ValidationError
 
-import algorithms.manager
+import checks.manager
 from routers import submissions, rubric
-from routers import algorithms as algorithms_router
-from routers import templates, template_groups
+from routers import checks as checks_router
+from routers import behavioral_rules, behavioral_rule_groups
 from rubric import Rubric
 
 app = FastAPI()
@@ -36,11 +36,11 @@ def get_rubric_from_disk(base_path: str) -> Rubric | None:
 
 
 # Register routers
-app.include_router(submissions.router, tags=["submissions"])
-app.include_router(rubric.router, tags=["rubric"])
-app.include_router(algorithms_router.router, tags=["algorithms"])
-app.include_router(templates.router, tags=["templates"])
-app.include_router(template_groups.router, tags=["template-groups"])
+app.include_router(submissions.router, prefix="/api", tags=["submissions"])
+app.include_router(rubric.router, prefix="/api", tags=["rubric"])
+app.include_router(checks_router.router, prefix="/api", tags=["checks"])
+app.include_router(behavioral_rules.router, prefix="/api", tags=["behavioral-rules"])
+app.include_router(behavioral_rule_groups.router, prefix="/api", tags=["behavioral-rule-groups"])
 
 
 if __name__ == "__main__":
@@ -59,11 +59,11 @@ if __name__ == "__main__":
         print("Usage: python main.py <folder path>")
         sys.exit(1)
 
-    # Load algorithms during startup
+    # Load checks during startup
     try:
-        algorithms.manager.load_algorithms()
+        checks.manager.load_checks()
     except Exception as e:
-        print(f"Could not load algorithms: {e}")
+        print(f"Could not load checks: {e}")
         sys.exit(1)
 
     # Initialize app state

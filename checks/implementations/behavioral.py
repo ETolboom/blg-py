@@ -1,7 +1,7 @@
 from typing import ClassVar, Optional
 from dataclasses import dataclass, field
 
-from algorithms import Algorithm, AlgorithmComplexity, AlgorithmFormInput, AlgorithmResult
+from checks import Check, CheckComplexity, CheckFormInput, CheckResult
 from pydantic import BaseModel
 
 from bpmn.bpmn import Bpmn
@@ -26,7 +26,7 @@ class Handles(BaseModel):
 
 class NodeData(BaseModel):
     label: str
-    score: Optional[float] = None
+    points: Optional[float] = None
     checkType: Optional[str] = None
     elementType: Optional[str] = None
     gatewayType: Optional[str] = None
@@ -102,7 +102,7 @@ class DecisionTreeNode(BaseModel):
     node_id: str
     node_type: str
     label: str
-    score: float = 0.0
+    points: float = 0.0
 
     # For gateway nodes
     outcomes: Optional[list[str]] = None
@@ -161,12 +161,12 @@ class MatchDetail:
 
 
 @dataclass
-class TemplateEvaluationResult:
-    """Result from evaluating a single template within a group"""
-    template_id: str
-    template_name: str
+class RuleEvaluationResult:
+    """Result from evaluating a single rule within a group"""
+    rule_id: str
+    rule_name: str
     description: str
-    score: float
+    earned_points: float
     confidence: float
     match_details: list[MatchDetail]
     success: bool  # True if evaluation completed without errors
@@ -174,7 +174,7 @@ class TemplateEvaluationResult:
 
 class BehavioralResult(BaseModel):
     """Extended result type for behavioral grading with detailed match information"""
-    # AlgorithmResult fields
+    # CheckResult fields
     id: str
     name: str
     category: str
@@ -182,28 +182,28 @@ class BehavioralResult(BaseModel):
     fulfilled: bool
     confidence: float
     problematic_elements: list[str] = []
-    inputs: list[AlgorithmFormInput] = []
+    inputs: list[CheckFormInput] = []
 
     # Additional behavioral-specific fields
     match_details: list[MatchDetail] = []
-    total_score: float = 0.0
+    earned_points: float = 0.0
     total_matches: int = 0
 
 
 class GroupEvaluationResult(BaseModel):
-    """Result from evaluating a template group"""
+    """Result from evaluating a behavioral rule group"""
     group_id: str
     group_name: str
     group_description: str
     condition: str  # "XOR" or "AND"
 
-    # Individual template results
-    template_results: list[TemplateEvaluationResult]
+    # Individual rule results
+    rule_results: list[RuleEvaluationResult]
 
     # Aggregated result (MAX scoring)
-    final_score: float              # MAX of template scores
-    best_template_id: str           # Which template achieved max score
-    overall_confidence: float       # From best template
+    earned_points: float            # MAX of rule points
+    best_rule_id: str               # Which rule achieved max points
+    overall_confidence: float       # From best rule
 
     # For rubric compatibility
     match_details: list[MatchDetail]
@@ -218,7 +218,7 @@ class TraversalContext:
     bpmn_pos: PoolElement           # Current position in BPMN model
     match_scores: list[float] = field(default_factory=list)  # All match scores so far
     match_details: list[MatchDetail] = field(default_factory=list)  # Detailed match info
-    total_score: float = 0.0        # Accumulated penalty score
+    accumulated_points: float = 0.0  # Accumulated points
     ideal_distance: int = 1         # Updated by followedBy nodes
     max_distance: int = 2           # Updated by followedBy nodes
     minimal_match_threshold: float = 0.6  # Minimum acceptable match score
@@ -232,7 +232,7 @@ class TraversalContext:
             bpmn_pos=self.bpmn_pos,
             match_scores=self.match_scores.copy(),
             match_details=self.match_details.copy(),
-            total_score=self.total_score,
+            accumulated_points=self.accumulated_points,
             ideal_distance=self.ideal_distance,
             max_distance=self.max_distance,
             minimal_match_threshold=self.minimal_match_threshold,
@@ -251,7 +251,7 @@ class TraversalContext:
 
         self.bpmn_pos = bpmn_elem
         self.match_scores.append(match_score)
-        self.total_score += workflow_node.data.score or 0.0
+        self.accumulated_points += workflow_node.data.points or 0.0
 
         # Create detailed match record
         match_detail = MatchDetail(
@@ -316,18 +316,18 @@ def _extract_connector_nodes(nodes: list[GraphNode]) -> list[GraphNode]:
     return connector_nodes
 
 
-class BehavioralRuleCheck(Algorithm):
+class BehavioralRuleCheck(Check):
     id: ClassVar[str] = "behavioral_rule"
     name: ClassVar[str] = "Behavioral Rule"
     description: ClassVar[str] = "Check the model based on a complex set of rules"
-    algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.COMPLEX
+    check_complexity: ClassVar[CheckComplexity] = CheckComplexity.COMPLEX
     threshold: ClassVar[float] = 0.0
 
     def is_applicable(self) -> bool:
         # Should not appear during onboarding
         return False
 
-    def inputs(self) -> list[AlgorithmFormInput]:
+    def inputs(self) -> list[CheckFormInput]:
         # Behavioral rules have different logic
         return []
 
@@ -337,17 +337,17 @@ class BehavioralRuleCheck(Algorithm):
         Returns: (fulfilled, problematic_elements, confidence)
         """
         problematic = []
-        total_score = 0.0
+        total_points = 0.0
         node_count = 0
 
         def traverse(node: DecisionTreeNode):
-            nonlocal total_score, node_count
+            nonlocal total_points, node_count
 
             node_count += 1
-            total_score += node.score
+            total_points += node.points
 
-            # Check if node has problematic score
-            if node.score > self.threshold:
+            # Check if node has problematic points
+            if node.points > self.threshold:
                 problematic.append(node.node_id)
                 node.is_problematic = True
 
@@ -360,9 +360,9 @@ class BehavioralRuleCheck(Algorithm):
 
         traverse(tree)
 
-        avg_score = total_score / node_count if node_count > 0 else 0.0
+        avg_points = total_points / node_count if node_count > 0 else 0.0
         fulfilled = len(problematic) == 0
-        confidence = 1.0 - min(avg_score, 1.0)
+        confidence = 1.0 - min(avg_points, 1.0)
 
         return fulfilled, problematic, confidence
 
@@ -470,27 +470,27 @@ class BehavioralRuleCheck(Algorithm):
                 max_distance=context.max_distance, match_threshold=0.8
             )
 
-    def _merge_contexts(self, branch_results: list[TraversalContext], base_score: float = 0.0) -> TraversalContext:
+    def _merge_contexts(self, branch_results: list[TraversalContext], base_points: float = 0.0) -> TraversalContext:
         """Merge multiple branch contexts into one
 
         Args:
             branch_results: List of contexts from each branch
-            base_score: Score accumulated before divergence (to avoid double-counting)
+            base_points: Points accumulated before divergence (to avoid double-counting)
         """
         # Use the last branch's context as base (it completed the convergence)
         merged = branch_results[-1].clone()
 
-        # Merge match scores, details, and scores from all branches
+        # Merge match scores, details, and points from all branches
         merged.match_scores = []
         merged.match_details = []
-        merged.total_score = base_score  # Start with base score
+        merged.accumulated_points = base_points  # Start with base points
         merged.visited_nodes = set()
 
         for ctx in branch_results:
             merged.match_scores.extend(ctx.match_scores)
             merged.match_details.extend(ctx.match_details)
-            # Add delta score (score added during branch traversal)
-            merged.total_score += (ctx.total_score - base_score)
+            # Add delta points (points added during branch traversal)
+            merged.accumulated_points += (ctx.accumulated_points - base_points)
             merged.visited_nodes.update(ctx.visited_nodes)
 
         return merged
@@ -655,9 +655,9 @@ class BehavioralRuleCheck(Algorithm):
 
         print(f"\n=== Handling AND branches ({len(branches)} branches) ===")
 
-        # Save the score before divergence to avoid double-counting
-        base_score = context.total_score
-        print(f"Score before divergence: {base_score}")
+        # Save the points before divergence to avoid double-counting
+        base_points = context.accumulated_points
+        print(f"Points before divergence: {base_points}")
 
         branch_results = []
 
@@ -673,13 +673,13 @@ class BehavioralRuleCheck(Algorithm):
             result_ctx = self._traverse_from(branch_ctx, model, connectors, workflow)
             branch_results.append(result_ctx)
 
-            print(f"Branch {i + 1} complete with {len(result_ctx.match_scores)} matches, score: {result_ctx.total_score}")
+            print(f"Branch {i + 1} complete with {len(result_ctx.match_scores)} matches, points: {result_ctx.accumulated_points}")
 
-        # Merge results with base score to avoid double-counting
+        # Merge results with base points to avoid double-counting
         print(f"\n--- Merging {len(branch_results)} AND branch results ---")
-        merged_ctx = self._merge_contexts(branch_results, base_score)
+        merged_ctx = self._merge_contexts(branch_results, base_points)
         merged_ctx.workflow_pos = self._get_node_by_id(connector.node_id, workflow)
-        print(f"Merged score: {merged_ctx.total_score}")
+        print(f"Merged points: {merged_ctx.accumulated_points}")
 
         # Continue past connector
         print(f"Continuing past AND connector...")
@@ -778,7 +778,7 @@ class BehavioralRuleCheck(Algorithm):
             bpmn_pos=bpmn_start,
             match_scores=[start_score],
             match_details=[start_match_detail],
-            total_score=0.0
+            accumulated_points=0.0
         )
 
         # 6. Traverse workflow with branch support
@@ -796,29 +796,29 @@ class BehavioralRuleCheck(Algorithm):
         confidence = final_context.confidence
         total_matches = len(final_context.match_scores)
 
-        # Round total_score to avoid floating point errors (e.g., 1.20000002 -> 1.2)
-        total_score_rounded = round(final_context.total_score, 2)
+        # Round accumulated_points to avoid floating point errors (e.g., 1.20000002 -> 1.2)
+        earned_points_rounded = round(final_context.accumulated_points, 2)
 
         print(f"\nFinal Results:")
         print(f"  - Total matches: {total_matches}")
         print(f"  - Overall confidence: {confidence:.3f}")
-        print(f"  - Total score: {total_score_rounded}")
+        print(f"  - Earned points: {earned_points_rounded}")
 
         return BehavioralResult(
             id=self.id,
             name=self.name,
-            category=self.algorithm_kind,
+            category=self.check_complexity,
             description=self.description,
             fulfilled=True,
             confidence=confidence,
             problematic_elements=[],
             inputs=[],
             match_details=final_context.match_details,
-            total_score=total_score_rounded,
+            earned_points=earned_points_rounded,
             total_matches=total_matches
         )
 
-    def analyze(self, inputs: list[AlgorithmFormInput] | None = None) -> AlgorithmResult:
+    def analyze(self, inputs: list[CheckFormInput] | None = None) -> CheckResult:
         raise Exception("Not applicable to behavioral rule check")
 
 
@@ -830,108 +830,108 @@ class BehavioralGroupEvaluator:
 
     def evaluate_group(self, group) -> GroupEvaluationResult:
         """
-        Evaluate all templates in group and aggregate results
+        Evaluate all rules in group and aggregate results
 
         Steps:
-        1. Load all templates from group.template_ids
+        1. Load all rules from group.rule_ids
         2. Evaluate each using BehavioralRuleCheck.check_behavior()
-        3. Collect individual TemplateEvaluationResult for each
+        3. Collect individual RuleEvaluationResult for each
         4. Apply aggregation based on condition (XOR/AND)
         5. Return GroupEvaluationResult with MAX score
         """
-        import templates.manager
+        import rules.manager
 
-        template_manager = templates.manager.get_manager()
+        template_manager = rules.manager.get_manager()
         checker = BehavioralRuleCheck(model_xml=self.model_xml)
 
-        template_results = []
-        for template_id in group.template_ids:
-            template = template_manager.get_template(template_id)
-            if template is None:
-                # Template not found, treat as failed
-                template_results.append(TemplateEvaluationResult(
-                    template_id=template_id,
-                    template_name=template_id,
-                    description="Template not found",
-                    score=0.0,
+        rule_results = []
+        for rule_id in group.rule_ids:
+            rule = template_manager.get_rule(rule_id)
+            if rule is None:
+                # Rule not found, treat as failed
+                rule_results.append(RuleEvaluationResult(
+                    rule_id=rule_id,
+                    rule_name=rule_id,
+                    description="Rule not found",
+                    earned_points=0.0,
                     confidence=0.0,
                     match_details=[],
                     success=False
                 ))
                 continue
 
-            workflow_data = WorkflowData(nodes=template.nodes, edges=template.edges)
+            workflow_data = WorkflowData(nodes=rule.nodes, edges=rule.edges)
 
             try:
                 result = checker.check_behavior(workflow=workflow_data)
-                template_results.append(TemplateEvaluationResult(
-                    template_id=template_id,
-                    template_name=template.name,
-                    description=template.description,
-                    score=result.total_score,
+                rule_results.append(RuleEvaluationResult(
+                    rule_id=rule_id,
+                    rule_name=rule.name,
+                    description=rule.description,
+                    earned_points=result.earned_points,
                     confidence=result.confidence,
                     match_details=result.match_details,
                     success=True
                 ))
             except Exception as e:
-                # Template failed to evaluate
-                print(f"Template {template_id} failed: {e}")
-                template_results.append(TemplateEvaluationResult(
-                    template_id=template_id,
-                    template_name=template.name,
-                    description=template.description,
-                    score=0.0,
+                # Rule failed to evaluate
+                print(f"Rule {rule_id} failed: {e}")
+                rule_results.append(RuleEvaluationResult(
+                    rule_id=rule_id,
+                    rule_name=rule.name,
+                    description=rule.description,
+                    earned_points=0.0,
                     confidence=0.0,
                     match_details=[],
                     success=False
                 ))
 
-        return self._aggregate_results(group, template_results)
+        return self._aggregate_results(group, rule_results)
 
-    def _aggregate_results(self, group, template_results: list[TemplateEvaluationResult]) -> GroupEvaluationResult:
+    def _aggregate_results(self, group, rule_results: list[RuleEvaluationResult]) -> GroupEvaluationResult:
         """
-        Aggregate template results based on condition
+        Aggregate rule results based on condition
 
         XOR Logic (Alternative Solutions):
-        - At least ONE template must succeed
-        - Score = MAX(successful_template_scores)
+        - At least ONE rule must succeed
+        - Points = MAX(successful_template_points)
         - fulfilled = any template succeeded
-        - Use best template's match_details and confidence
+        - Use best rule's match_details and confidence
 
         AND Logic (Required Features):
-        - ALL templates must succeed
-        - Score = MAX(all_template_scores) if all succeeded, else 0
-        - fulfilled = all templates succeeded
-        - Merge match_details from all templates
+        - ALL rules must succeed
+        - Points = MAX(all_template_points) if all succeeded, else 0
+        - fulfilled = all rules succeeded
+        - Merge match_details from all rules
         """
         if group.condition.value == "XOR":
-            successful = [r for r in template_results if r.success and r.score > 0]
+            successful = [r for r in rule_results if r.success and r.earned_points > 0]
 
             if successful:
-                best = max(successful, key=lambda r: r.score)
+                best = max(successful, key=lambda r: r.earned_points)
                 return GroupEvaluationResult(
                     group_id=group.group_id,
                     group_name=group.name,
                     group_description=group.description,
                     condition=group.condition.value,
-                    template_results=template_results,
-                    final_score=best.score,
-                    best_template_id=best.template_id,
+                    rule_results=rule_results,
+                    earned_points=best.earned_points,
+                    best_rule_id=best.rule_id,
                     overall_confidence=best.confidence,
                     match_details=best.match_details,
                     problematic_elements=self._extract_problematic(best.match_details),
                     fulfilled=True
                 )
             else:
-                # No templates succeeded
+                # No rules succeeded
                 return GroupEvaluationResult(
                     group_id=group.group_id,
                     group_name=group.name,
                     group_description=group.description,
                     condition=group.condition.value,
-                    template_results=template_results,
-                    final_score=0.0,
-                    best_template_id="",
+                    rule_results=rule_results,
+                    earned_points=0.0,
+                    best_rule_id="",
                     overall_confidence=0.0,
                     match_details=[],
                     problematic_elements=[],
@@ -939,13 +939,13 @@ class BehavioralGroupEvaluator:
                 )
 
         elif group.condition.value == "AND":
-            all_succeeded = all(r.success for r in template_results)
+            all_succeeded = all(r.success for r in rule_results)
 
             if all_succeeded:
-                best = max(template_results, key=lambda r: r.score)
-                # Merge match_details from all templates
+                best = max(rule_results, key=lambda r: r.earned_points)
+                # Merge match_details from all rules
                 merged_details = []
-                for r in template_results:
+                for r in rule_results:
                     merged_details.extend(r.match_details)
 
                 return GroupEvaluationResult(
@@ -953,24 +953,24 @@ class BehavioralGroupEvaluator:
                     group_name=group.name,
                     group_description=group.description,
                     condition=group.condition.value,
-                    template_results=template_results,
-                    final_score=best.score,
-                    best_template_id=best.template_id,
+                    rule_results=rule_results,
+                    earned_points=best.earned_points,
+                    best_rule_id=best.rule_id,
                     overall_confidence=best.confidence,
                     match_details=merged_details,
                     problematic_elements=self._extract_problematic(merged_details),
                     fulfilled=True
                 )
             else:
-                # Not all templates succeeded
+                # Not all rules succeeded
                 return GroupEvaluationResult(
                     group_id=group.group_id,
                     group_name=group.name,
                     group_description=group.description,
                     condition=group.condition.value,
-                    template_results=template_results,
-                    final_score=0.0,
-                    best_template_id="",
+                    rule_results=rule_results,
+                    earned_points=0.0,
+                    best_rule_id="",
                     overall_confidence=0.0,
                     match_details=[],
                     problematic_elements=[],

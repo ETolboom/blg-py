@@ -3,10 +3,10 @@ import os
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
-import algorithms.manager
-import templates.manager
-from algorithms import Algorithm, AlgorithmComplexity, AlgorithmFormInput
-from algorithms.implementations.behavioral import BehavioralRuleCheck, WorkflowData, BehavioralGroupEvaluator
+import checks.manager
+import rules.manager
+from checks import Check, CheckComplexity, CheckFormInput
+from checks.implementations.behavioral import BehavioralRuleCheck, WorkflowData, BehavioralGroupEvaluator
 from rubric import Rubric, RubricCriterion
 
 router = APIRouter()
@@ -24,13 +24,13 @@ class Node(BaseModel):
     children: list["Node"] | None = None
 
 
-@router.get("/algorithms")
-async def list_algorithms() -> list[dict[str, str | list[AlgorithmFormInput]]]:
-    manager = algorithms.manager.get_manager("")
-    return manager.list_algorithms()
+@router.get("/checks")
+async def list_checks() -> list[dict[str, str | list[CheckFormInput]]]:
+    manager = checks.manager.get_manager("")
+    return manager.list_checks()
 
 
-@router.post("/algorithms/analyze", response_model=None)
+@router.post("/checks/analyze", response_model=None)
 async def analyze_submission(filename: str, request: Request) -> Response | Rubric:
     base_path = request.app.state.base_path
     rubric = request.app.state.rubric
@@ -54,15 +54,15 @@ async def analyze_submission(filename: str, request: Request) -> Response | Rubr
     with open(submission, encoding="utf-8") as f:
         model_xml = f.read()
 
-    manager = algorithms.manager.get_manager(model_xml)
+    manager = checks.manager.get_manager(model_xml)
 
     parsed_algorithms: list[RubricCriterion] = []
     for algorithm in rubric.criteria:
         # Check if this is a behavioral (template-based) criterion
-        if algorithm.category == AlgorithmComplexity.COMPLEX:
+        if algorithm.check_complexity == CheckComplexity.COMPLEX:
             # This is a behavioral criterion - detect if it's a GROUP or INDIVIDUAL TEMPLATE
             criterion_id = algorithm.id
-            template_manager = templates.manager.get_manager()
+            template_manager = rules.manager.get_manager()
 
             # Check if this is a group (prefixed with "group:")
             if criterion_id.startswith("group:"):
@@ -88,27 +88,27 @@ async def analyze_submission(filename: str, request: Request) -> Response | Rubr
                         id=criterion_id,  # Keep the "group:" prefix in the result
                         name=group.name,
                         description=group.description,
-                        category=AlgorithmComplexity.COMPLEX,
+                        check_complexity=CheckComplexity.COMPLEX,
                         fulfilled=result.fulfilled,
                         inputs=algorithm.inputs,
                         confidence=result.overall_confidence,
                         problematic_elements=result.problematic_elements,
                         default_points=group.maxPoints,
-                        custom_score=result.final_score if round(result.final_score, 2) != group.maxPoints else None,
+                        custom_score=result.earned_points if round(result.earned_points, 2) != group.maxPoints else None,
                     )
                 )
             else:
-                # === INDIVIDUAL TEMPLATE EVALUATION (existing logic) ===
-                template = template_manager.get_template(criterion_id)
+                # === INDIVIDUAL RULE EVALUATION (existing logic) ===
+                rule = template_manager.get_rule(criterion_id)
 
-                if template is None:
+                if rule is None:
                     raise HTTPException(
                         status_code=500,
-                        detail=f"Template or group '{criterion_id}' not found on disk but referenced in rubric"
+                        detail=f"Rule or group '{criterion_id}' not found on disk but referenced in rubric"
                     )
 
                 # Run behavioral analysis
-                workflow_data = WorkflowData(nodes=template.nodes, edges=template.edges)
+                workflow_data = WorkflowData(nodes=rule.nodes, edges=rule.edges)
                 checker = BehavioralRuleCheck(model_xml=model_xml)
                 result = checker.check_behavior(workflow=workflow_data)
 
@@ -122,26 +122,26 @@ async def analyze_submission(filename: str, request: Request) -> Response | Rubr
                 parsed_algorithms.append(
                     RubricCriterion(
                         id=criterion_id,
-                        name=template.name,
-                        description=template.description,
-                        category=AlgorithmComplexity.COMPLEX,
-                        fulfilled=result.total_score > 0,
+                        name=rule.name,
+                        description=rule.description,
+                        check_complexity=CheckComplexity.COMPLEX,
+                        fulfilled=result.earned_points > 0,
                         inputs=algorithm.inputs,  # Keep template_id reference
                         confidence=result.confidence,
                         problematic_elements=problematic_elements,
-                        default_points=template.maxPoints,
-                        custom_score=result.total_score if round(result.total_score, 2) != template.maxPoints else None,
+                        default_points=rule.maxPoints,
+                        custom_score=result.earned_points if round(result.earned_points, 2) != rule.maxPoints else None,
                     )
                 )
         else:
-            # Standard algorithm - use algorithm manager
-            result = manager.get_algorithm(algorithm.id).analyze(inputs=algorithm.inputs)
+            # Standard check - use check manager
+            result = manager.get_check(algorithm.id).analyze(inputs=algorithm.inputs)
             parsed_algorithms.append(
                 RubricCriterion(
                     id=result.id,
                     name=result.name,
                     description=result.description,
-                    category=result.category,
+                    check_complexity=result.check_complexity,
                     fulfilled=result.fulfilled,
                     inputs=result.inputs,
                     confidence=result.confidence,
@@ -162,39 +162,39 @@ async def analyze_submission(filename: str, request: Request) -> Response | Rubr
     return parsed_submission
 
 
-@router.post("/algorithms/analyze/all")
+@router.post("/checks/analyze/all")
 async def analyze_all(req: Request) -> list[Node]:
     model_xml = await req.body()
     if not model_xml:
         raise HTTPException(status_code=400, detail="request body is missing")
 
-    manager = algorithms.manager.get_manager(model_xml.decode())
-    available_algorithms = manager.list_algorithms()
+    manager = checks.manager.get_manager(model_xml.decode())
+    available_checks = manager.list_checks()
 
-    applicable_algorithms: dict[str, list[Algorithm]] = {}
-    for entry in available_algorithms:
-        alg_id = str(entry["id"])
-        algorithm = manager.get_algorithm(alg_id)
-        if algorithm.is_applicable():
-            # We order algorithms by category
-            if algorithm.algorithm_kind in applicable_algorithms:
-                applicable_algorithms[algorithm.algorithm_kind].append(algorithm)
+    applicable_checks: dict[str, list[Check]] = {}
+    for entry in available_checks:
+        check_id = str(entry["id"])
+        check = manager.get_check(check_id)
+        if check.is_applicable():
+            # We order checks by category
+            if check.check_complexity in applicable_checks:
+                applicable_checks[check.check_complexity].append(check)
             else:
-                applicable_algorithms[algorithm.algorithm_kind] = [algorithm]
+                applicable_checks[check.check_complexity] = [check]
 
     nodes: list[Node] = []
 
     node_idx = 0
-    for category in applicable_algorithms:
+    for category in applicable_checks:
         inner_nodes = []
-        for inner_node_idx, algorithm in enumerate(applicable_algorithms[category]):
+        for inner_node_idx, check in enumerate(applicable_checks[category]):
             inner_nodes.append(
                 Node(
                     key=str(node_idx) + "-" + str(inner_node_idx),
                     data=NodeData(
-                        id=algorithm.id,
-                        name=algorithm.name,
-                        description=algorithm.description,
+                        id=check.id,
+                        name=check.name,
+                        description=check.description,
                     ),
                 )
             )

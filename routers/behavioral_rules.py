@@ -2,122 +2,122 @@ import os
 
 from fastapi import APIRouter, HTTPException, Request
 
-import templates.manager
-from algorithms.implementations.behavioral import WorkflowData, BehavioralRuleCheck, BehavioralGroupEvaluator
-from templates.manager import RuleTemplate
+import rules.manager
+from checks.implementations.behavioral import WorkflowData, BehavioralRuleCheck, BehavioralGroupEvaluator
+from rules.manager import BehavioralRule
 
 router = APIRouter()
 
 
-@router.get("/templates")
-async def get_templates() -> list[dict]:
-    """List all available rule templates"""
+@router.get("/behavioral-rules")
+async def get_rules() -> list[dict]:
+    """List all available rule rules"""
     try:
-        template_manager = templates.manager.get_manager()
-        return template_manager.list_templates()
+        rule_manager = rules.manager.get_manager()
+        return rule_manager.list_rules()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to list templates: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to list rules: {str(e)}")
 
 
-@router.get("/templates/{template_id}")
-async def get_template(template_id: str) -> RuleTemplate:
-    """Get a specific template by ID"""
+@router.get("/behavioral-rules/{rule_id}")
+async def get_rule(rule_id: str) -> BehavioralRule:
+    """Get a specific rule by ID"""
     try:
-        template_manager = templates.manager.get_manager()
-        template = template_manager.get_template(template_id)
+        rule_manager = rules.manager.get_manager()
+        rule = rule_manager.get_rule(rule_id)
 
-        if template is None:
-            raise HTTPException(status_code=404, detail=f"Template '{template_id}' not found")
+        if rule is None:
+            raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")
 
-        return template
+        return rule
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get template: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get rule: {str(e)}")
 
 
-@router.post("/templates")
-async def create_template(template: RuleTemplate) -> RuleTemplate:
-    """Create a new rule template"""
+@router.post("/behavioral-rules")
+async def create_rule(rule: BehavioralRule) -> BehavioralRule:
+    """Create a new rule rule"""
     try:
-        template_manager = templates.manager.get_manager()
+        rule_manager = rules.manager.get_manager()
 
-        # Check if template already exists
-        if template_manager.template_exists(template.id):
+        # Check if rule already exists
+        if rule_manager.rule_exists(rule.id):
             raise HTTPException(
                 status_code=409,
-                detail=f"Template with ID '{template.id}' already exists. Use PUT to update."
+                detail=f"Rule with ID '{rule.id}' already exists. Use PUT to update."
             )
 
-        return template_manager.save_template(template)
+        return rule_manager.save_rule(rule)
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create template: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create rule: {str(e)}")
 
 
-@router.put("/templates/{template_id}")
-async def update_template(template_id: str, template: RuleTemplate) -> RuleTemplate:
-    """Update an existing rule template"""
+@router.put("/behavioral-rules/{rule_id}")
+async def update_rule(rule_id: str, rule: BehavioralRule) -> BehavioralRule:
+    """Update an existing rule rule"""
     try:
-        template_manager = templates.manager.get_manager()
+        rule_manager = rules.manager.get_manager()
 
-        # Ensure the template ID in the URL matches the one in the body
-        if template.id != template_id:
+        # Ensure the rule ID in the URL matches the one in the body
+        if rule.id != rule_id:
             raise HTTPException(
                 status_code=400,
-                detail=f"Template ID in URL ('{template_id}') doesn't match ID in body ('{template.id}')"
+                detail=f"Rule ID in URL ('{rule_id}') doesn't match ID in body ('{rule.id}')"
             )
 
-        # Check if template exists
-        if not template_manager.template_exists(template_id):
+        # Check if rule exists
+        if not rule_manager.rule_exists(rule_id):
             raise HTTPException(
                 status_code=404,
-                detail=f"Template '{template_id}' not found. Use POST to create."
+                detail=f"Rule '{rule_id}' not found. Use POST to create."
             )
 
-        return template_manager.save_template(template)
+        return rule_manager.save_rule(rule)
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update template: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update rule: {str(e)}")
 
 
-@router.delete("/templates/{template_id}")
-async def delete_template(template_id: str) -> dict:
-    """Delete a rule template"""
+@router.delete("/behavioral-rules/{rule_id}")
+async def delete_rule(rule_id: str) -> dict:
+    """Delete a rule rule"""
     try:
-        template_manager = templates.manager.get_manager()
+        rule_manager = rules.manager.get_manager()
 
-        if not template_manager.delete_template(template_id):
-            raise HTTPException(status_code=404, detail=f"Template '{template_id}' not found")
+        if not rule_manager.delete_rule(rule_id):
+            raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")
 
-        return {"message": f"Template '{template_id}' deleted successfully"}
+        return {"message": f"Rule '{rule_id}' deleted successfully"}
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete template: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete rule: {str(e)}")
 
 
-@router.post("/templates/{template_id}/validate")
-async def validate_template(template_id: str, request: Request) -> dict:
+@router.post("/behavioral-rules/{rule_id}/validate")
+async def validate_rule(rule_id: str, request: Request) -> dict:
     """
-    Validate a rule template against the current rubric's reference BPMN.
+    Validate a behavioral rule against the current rubric's reference BPMN.
     This runs the behavioral analysis and updates the rubric entry.
 
-    If the template is part of any groups, those groups will also be
+    If the rule is part of any groups, those groups will also be
     automatically re-evaluated and their rubric entries updated.
     """
     base_path = request.app.state.base_path
     rubric = request.app.state.rubric
 
     try:
-        # Get the template
-        template_manager = templates.manager.get_manager()
-        template = template_manager.get_template(template_id)
+        # Get the rule
+        rule_manager = rules.manager.get_manager()
+        rule = rule_manager.get_rule(rule_id)
 
-        if template is None:
-            raise HTTPException(status_code=404, detail=f"Template '{template_id}' not found")
+        if rule is None:
+            raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")
 
         # Ensure we have a rubric with reference XML
         if not rubric or not rubric.assignment or not rubric.assignment.reference_xml:
@@ -126,10 +126,10 @@ async def validate_template(template_id: str, request: Request) -> dict:
                 detail="No reference BPMN model loaded. Please load a rubric first."
             )
 
-        # Convert template to WorkflowData
+        # Convert rule to WorkflowData
         workflow_data = WorkflowData(
-            nodes=template.nodes,
-            edges=template.edges
+            nodes=rule.nodes,
+            edges=rule.edges
         )
 
         # Run behavioral analysis
@@ -147,39 +147,38 @@ async def validate_template(template_id: str, request: Request) -> dict:
                 if match.bpmn_element_id not in problematic_elements:
                     problematic_elements.append(match.bpmn_element_id)
 
-        # Calculate score: use confidence as the score
-        score = result.total_score
+        # Calculate earned points
+        earned_points = result.earned_points
 
-        # Update the rubric entry if it exists (individual template)
+        # Update the rubric entry if it exists (individual rule)
         criterion_index = next(
-            (i for i, criterion in enumerate(rubric.criteria) if criterion.id == template_id),
+            (i for i, criterion in enumerate(rubric.criteria) if criterion.id == rule_id),
             -1
         )
 
         if criterion_index != -1:
             # Update existing criterion
-            rubric.criteria[criterion_index].fulfilled = score > 0
+            rubric.criteria[criterion_index].fulfilled = earned_points > 0
             rubric.criteria[criterion_index].confidence = result.confidence
             rubric.criteria[criterion_index].problematic_elements = problematic_elements
 
-            if round(score, 2) != rubric.criteria[criterion_index].default_points:
-                rubric.criteria[criterion_index].custom_score = score
+            if round(earned_points, 2) != rubric.criteria[criterion_index].default_points:
+                rubric.criteria[criterion_index].custom_score = earned_points
 
-        # === NEW: Re-evaluate any groups that contain this template ===
         affected_groups = []
-        all_groups = template_manager.list_groups()
+        all_groups = rule_manager.list_groups()
 
         for group_info in all_groups:
-            if template_id in group_info.get('template_ids', []):
-                # This group contains the updated template - re-evaluate it
-                group = template_manager.get_group(group_info['group_id'])
+            if rule_id in group_info.get('rule_ids', []):
+                # This group contains the updated rule - re-evaluate it
+                group = rule_manager.get_group(group_info['group_id'])
                 if group is not None:
                     # Re-evaluate the group
                     evaluator = BehavioralGroupEvaluator(model_xml=rubric.assignment.reference_xml)
                     group_result = evaluator.evaluate_group(group)
 
                     # Save evaluation results to group file
-                    template_manager.update_group_evaluation(group.group_id, group_result)
+                    rule_manager.update_group_evaluation(group.group_id, group_result)
 
                     # Find and update this group's rubric entry (search with "group:" prefix)
                     prefixed_group_id = f"group:{group.group_id}"
@@ -194,19 +193,19 @@ async def validate_template(template_id: str, request: Request) -> dict:
                         rubric.criteria[group_criterion_index].confidence = group_result.overall_confidence
                         rubric.criteria[group_criterion_index].problematic_elements = group_result.problematic_elements
 
-                        if round(group_result.final_score, 2) != group.maxPoints:
-                            rubric.criteria[group_criterion_index].custom_score = group_result.final_score
+                        if round(group_result.earned_points, 2) != group.maxPoints:
+                            rubric.criteria[group_criterion_index].custom_score = group_result.earned_points
                         else:
                             rubric.criteria[group_criterion_index].custom_score = None
 
                         affected_groups.append({
                             "group_id": group.group_id,
                             "group_name": group.name,
-                            "updated_score": group_result.final_score,
-                            "best_template": group_result.best_template_id
+                            "updated_points": group_result.earned_points,
+                            "best_rule": group_result.best_rule_id
                         })
 
-        # Save updated rubric to disk (includes both template and group updates)
+        # Save updated rubric to disk (includes both rule and group updates)
         if criterion_index != -1 or affected_groups:
             # Update app state
             request.app.state.rubric = rubric
@@ -216,13 +215,13 @@ async def validate_template(template_id: str, request: Request) -> dict:
 
         # Return validation results (including affected groups)
         return {
-            "template_id": template_id,
-            "template_name": template.name,
+            "rule_id": rule_id,
+            "rule_name": rule.name,
             "validation_result": {
                 "fulfilled": result.fulfilled,
                 "confidence": result.confidence,
                 "total_matches": result.total_matches,
-                "total_score": result.total_score,
+                "earned_points": result.earned_points,
                 "match_details": [
                     {
                         "workflow_node_id": match.workflow_node_id,

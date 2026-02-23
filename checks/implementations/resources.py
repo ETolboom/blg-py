@@ -1,34 +1,34 @@
 from typing import ClassVar
 
-from algorithms import (
-    Algorithm,
-    AlgorithmComplexity,
-    AlgorithmFormInput,
-    AlgorithmInputType,
-    AlgorithmKeyValuePair,
-    AlgorithmKeyValueType,
-    AlgorithmResult,
+from checks import (
+    Check,
+    CheckComplexity,
+    CheckFormInput,
+    CheckInputType,
+    CheckKeyValuePair,
+    CheckKeyValueType,
+    CheckResult,
 )
 from bpmn.bpmn import Bpmn
 from utils import get_elements_by_type
 from utils.similarity import match_labels
 
 
-class PoolLaneCheck(Algorithm):
+class PoolLaneCheck(Check):
     id: ClassVar[str] = "pool_lane_check"
     name: ClassVar[str] = "Pool-Lane Check"
     description: ClassVar[str] = (
         "Check for specific amount and label of the existing pools and lanes in a model"
     )
-    algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.CONFIGURABLE
+    check_complexity: ClassVar[CheckComplexity] = CheckComplexity.CONFIGURABLE
     threshold: ClassVar[float] = 0.70
 
     key_label: ClassVar[str] = "Pool name"
     value_label: ClassVar[str] = "Lane name"
 
     def analyze(
-        self, inputs: list[AlgorithmFormInput] | None = None
-    ) -> AlgorithmResult:
+        self, inputs: list[CheckFormInput] | None = None
+    ) -> CheckResult:
         if inputs is None:
             # Analyze pools & lanes whilst taking reference xml as ground truth.
             inputs = []
@@ -36,17 +36,17 @@ class PoolLaneCheck(Algorithm):
 
             for pool in model.pools:
                 inputs.append(
-                    AlgorithmFormInput(
+                    CheckFormInput(
                         input_label="Pool(s) and Lane(s)",
-                        input_type=AlgorithmInputType.KEY_VALUE,
+                        input_type=CheckInputType.KEY_VALUE,
                         multiple=True,
                         # In case you have a pool with a single lane then technically a
                         # lane exists that has no name hence the type check.
-                        data=AlgorithmKeyValueType(
+                        data=CheckKeyValueType(
                             key_label=self.key_label,
                             value_label=self.value_label,
                             pairs=[
-                                AlgorithmKeyValuePair(
+                                CheckKeyValuePair(
                                     key=pool.name,
                                     value=[
                                         lane.name
@@ -62,11 +62,11 @@ class PoolLaneCheck(Algorithm):
             if len(inputs) == 0:
                 raise Exception("No pools found")
 
-            return AlgorithmResult(
+            return CheckResult(
                 id=self.id,
                 name=self.name,
                 description=self.description,
-                category=self.algorithm_kind,
+                check_complexity=self.check_complexity,
                 problematic_elements=[],
                 fulfilled=True,
                 inputs=inputs,
@@ -86,11 +86,11 @@ class PoolLaneCheck(Algorithm):
                 reference_pools.append(pool.key)
 
         if reference_pools and not submission_pools:
-            return AlgorithmResult(
+            return CheckResult(
                 id=self.id,
                 name=self.name,
                 description=self.description,
-                category=self.algorithm_kind,
+                check_complexity=self.check_complexity,
                 problematic_elements=[],
                 fulfilled=None,
                 inputs=inputs,
@@ -116,11 +116,11 @@ class PoolLaneCheck(Algorithm):
                 for lane in pool.lanes:
                     missing_matches.add(lane.id)
 
-            return AlgorithmResult(
+            return CheckResult(
                 id=self.id,
                 name=self.name,
                 description=self.description,
-                category=self.algorithm_kind,
+                check_complexity=self.check_complexity,
                 problematic_elements=list(missing_matches),
                 fulfilled=False,
                 inputs=inputs,
@@ -158,22 +158,22 @@ class PoolLaneCheck(Algorithm):
                 for missed_match in missing_matches:
                     missing_ids.append(missed_match)
 
-        return AlgorithmResult(
+        return CheckResult(
             id=self.id,
             name=self.name,
             description=self.description,
-            category=self.algorithm_kind,
+            check_complexity=self.check_complexity,
             problematic_elements=missing_ids,
             fulfilled=(len(missing_ids) == 0),
             inputs=inputs,
         )
 
-    def inputs(self) -> list[AlgorithmFormInput]:
+    def inputs(self) -> list[CheckFormInput]:
         return [
-            AlgorithmFormInput(
+            CheckFormInput(
                 input_label="Pools and lanes",
-                input_type=AlgorithmInputType.KEY_VALUE,
-                data=AlgorithmKeyValueType(
+                input_type=CheckInputType.KEY_VALUE,
+                data=CheckKeyValueType(
                     key_label=self.key_label, value_label=self.value_label, pairs=[]
                 ),
                 multiple=True,
@@ -185,10 +185,10 @@ class PoolLaneCheck(Algorithm):
             get_elements_by_type(self.model_xml, "process")
             get_elements_by_type(self.model_xml, "lane")
         except TypeError as e:
-            print(f"Algorithm {self.name} is not applicable: {e}")
+            print(f"Check {self.name} is not applicable: {e}")
             return False
         except ValueError as e:
-            print(f"Algorithm {self.name} is not applicable: {e}")
+            print(f"Check {self.name} is not applicable: {e}")
             return False
 
         return True

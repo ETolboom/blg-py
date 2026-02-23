@@ -1,10 +1,10 @@
 import io
 
-import pandas as pd
+from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from pydantic import BaseModel
 
-from algorithms import AlgorithmResult
+from checks import CheckResult
 
 
 class Assignment(BaseModel):
@@ -14,22 +14,21 @@ class Assignment(BaseModel):
     description: str | None = ""
 
 
-class RubricCriterion(AlgorithmResult):
+class RubricCriterion(CheckResult):
     custom_score: float | None
     default_points: float
 
 
 class OnboardingRubric(BaseModel):
     assignment: Assignment
-    algorithms: list[str] = []
+    checks: list[str] = []
 
 
 class Rubric(BaseModel):
     criteria: list[RubricCriterion]
     assignment: Assignment | None
 
-    def to_excel_worksheet(self, writer, filename: str) -> None:
-        workbook = writer.book
+    def to_excel_worksheet(self, workbook: Workbook, filename: str) -> None:
         worksheet = workbook.create_sheet(filename)
 
         # Define styles
@@ -100,12 +99,14 @@ class Rubric(BaseModel):
 
     def to_excel(self, filename: str) -> bytes:
         excel_buffer = io.BytesIO()
-        with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
-            self.to_excel_worksheet(writer, filename)
+        workbook = Workbook()
 
-            # Remove default sheet if it exists
-            if "Sheet" in writer.book.sheetnames:
-                writer.book.remove(writer.book["Sheet"])
+        self.to_excel_worksheet(workbook, filename)
 
+        # Remove default sheet if it exists
+        if "Sheet" in workbook.sheetnames:
+            workbook.remove(workbook["Sheet"])
+
+        workbook.save(excel_buffer)
         excel_buffer.seek(0)
         return excel_buffer.getvalue()

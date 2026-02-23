@@ -1,16 +1,16 @@
-from typing import ClassVar, overload
+from typing import ClassVar
 
-from algorithms import Algorithm, AlgorithmFormInput, AlgorithmResult, AlgorithmComplexity, AlgorithmInputType, \
-    AlgorithmKeyValueType, AlgorithmSelectionType, AlgorithmSelectionPair
-from utils import get_elements_by_type, extract_all_tasks, TaskType, ExtractedTask
+from checks import Check, CheckFormInput, CheckResult, CheckComplexity, CheckInputType, \
+    CheckSelectionType, CheckSelectionPair
+from utils import extract_all_tasks, TaskType, ExtractedTask
 from utils.similarity import match_labels
 
 
-class TaskTypeCheck(Algorithm):
+class TaskTypeCheck(Check):
     id: ClassVar[str] = "task_type"
     name: ClassVar[str] = "Task Type"
     description: ClassVar[str] = "Check if all available tasks are of the correct type"
-    algorithm_kind: ClassVar[AlgorithmComplexity] = AlgorithmComplexity.CONFIGURABLE
+    check_complexity: ClassVar[CheckComplexity] = CheckComplexity.CONFIGURABLE
     threshold: ClassVar[float] = 0.7
 
     acceptable_task_types: list[str] = [
@@ -32,12 +32,12 @@ class TaskTypeCheck(Algorithm):
 
         return True
 
-    def inputs(self) -> list[AlgorithmFormInput]:
+    def inputs(self) -> list[CheckFormInput]:
         return [
-            AlgorithmFormInput(
+            CheckFormInput(
                 input_label="Labels and Task Types",
-                input_type=AlgorithmInputType.SELECTION,
-                data=AlgorithmSelectionType(
+                input_type=CheckInputType.SELECTION,
+                data=CheckSelectionType(
                     placeholder="Task Type",
                     accepted_values=self.acceptable_task_types,
                     pairs=[]
@@ -46,7 +46,7 @@ class TaskTypeCheck(Algorithm):
             ),
         ]
 
-    def analyze(self, inputs: list[AlgorithmFormInput] | None = None) -> AlgorithmResult:
+    def analyze(self, inputs: list[CheckFormInput] | None = None) -> CheckResult:
         if inputs is None:
             # No inputs yet, extract it from the model
             tasks = extract_all_tasks(self.model_xml, allow_abstract=True)
@@ -58,21 +58,21 @@ class TaskTypeCheck(Algorithm):
             if len(abstract_tasks) > 1:
                 fulfilled = False
 
-            return AlgorithmResult(
+            return CheckResult(
                 id=self.id,
                 name=self.name,
                 description=self.description,
-                category=self.algorithm_kind,
+                check_complexity=self.check_complexity,
                 problematic_elements=[],
                 fulfilled=fulfilled,
                 inputs=[
-                    AlgorithmFormInput(
+                    CheckFormInput(
                         input_label="Labels and Task Types",
-                        input_type=AlgorithmInputType.SELECTION,
-                        data=AlgorithmSelectionType(
+                        input_type=CheckInputType.SELECTION,
+                        data=CheckSelectionType(
                             placeholder="Task Type",
                             accepted_values=self.acceptable_task_types,
-                            pairs=[AlgorithmSelectionPair(label=element.name, type=element.task_type) for element in tasks]
+                            pairs=[CheckSelectionPair(label=element.name, type=element.task_type) for element in tasks]
                         ),
                         multiple=True,
                     ),
@@ -94,15 +94,15 @@ class TaskTypeCheck(Algorithm):
 
         for (target_idx, ref_idx) in matches:
             target_task: ExtractedTask = target_tasks[target_idx]
-            reference_task: AlgorithmSelectionPair = inputs[0].data.pairs[ref_idx]
+            reference_task: CheckSelectionPair = inputs[0].data.pairs[ref_idx]
 
             if (target_task.task_type == TaskType.ABSTRACT) or (target_task.task_type != reference_task.type):
                 problematic_elements.append(target_task.id)
 
-        return AlgorithmResult(
+        return CheckResult(
             id=self.id,
             name=self.name,
-            category=self.algorithm_kind,
+            check_complexity=self.check_complexity,
             description=self.description,
             fulfilled=len(problematic_elements) == 0,
             confidence=1.0,

@@ -2,31 +2,31 @@ import os
 
 from fastapi import APIRouter, HTTPException, Request
 
-import templates.manager
-from algorithms import AlgorithmComplexity, AlgorithmFormInput, AlgorithmInputType
-from algorithms.implementations.behavioral import BehavioralGroupEvaluator, GroupEvaluationResult
+import rules.manager
+from checks import CheckComplexity, CheckFormInput, CheckInputType
+from checks.implementations.behavioral import BehavioralGroupEvaluator, GroupEvaluationResult
 from rubric import RubricCriterion
-from templates.manager import TemplateGroup
+from rules.manager import BehavioralRuleGroup
 
 router = APIRouter()
 
 
-@router.get("/template-groups")
-async def list_template_groups() -> list[dict]:
+@router.get("/behavioral-rule-groups")
+async def list_rule_groups() -> list[dict]:
     """List all available template groups"""
     try:
-        template_manager = templates.manager.get_manager()
+        template_manager = rules.manager.get_manager()
         return template_manager.list_groups()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list groups: {str(e)}")
 
 
-@router.get("/template-groups/{group_id}")
-async def get_template_group(group_id: str) -> TemplateGroup:
+@router.get("/behavioral-rule-groups/{group_id}")
+async def get_rule_group(group_id: str) -> BehavioralRuleGroup:
     """Get specific template group"""
     try:
-        template_manager = templates.manager.get_manager()
-        group = template_manager.get_group(group_id)
+        rule_manager = rules.manager.get_manager()
+        group = rule_manager.get_group(group_id)
         if group is None:
             raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
         return group
@@ -36,22 +36,22 @@ async def get_template_group(group_id: str) -> TemplateGroup:
         raise HTTPException(status_code=500, detail=f"Failed to get group: {str(e)}")
 
 
-@router.post("/template-groups")
-async def create_template_group(group: TemplateGroup) -> TemplateGroup:
+@router.post("/behavioral-rule-groups")
+async def create_rule_group(group: BehavioralRuleGroup) -> BehavioralRuleGroup:
     """Create new template group"""
     try:
-        template_manager = templates.manager.get_manager()
+        rule_manager = rules.manager.get_manager()
 
         # Check if group already exists
-        if template_manager.group_exists(group.group_id):
+        if rule_manager.group_exists(group.group_id):
             raise HTTPException(
                 status_code=409,
                 detail=f"Group with ID '{group.group_id}' already exists. Use PUT to update."
             )
 
         # Validate that all templates exist
-        template_manager.validate_group_templates(group)
-        return template_manager.save_group(group)
+        rule_manager.validate_group_rules(group)
+        return rule_manager.save_group(group)
     except HTTPException:
         raise
     except ValueError as e:
@@ -60,8 +60,8 @@ async def create_template_group(group: TemplateGroup) -> TemplateGroup:
         raise HTTPException(status_code=500, detail=f"Failed to create group: {str(e)}")
 
 
-@router.put("/template-groups/{group_id}")
-async def update_template_group(group_id: str, group: TemplateGroup) -> TemplateGroup:
+@router.put("/behavioral-rule-groups/{group_id}")
+async def update_template_group(group_id: str, group: BehavioralRuleGroup) -> BehavioralRuleGroup:
     """Update existing template group"""
     try:
         # Ensure group_id matches
@@ -71,18 +71,18 @@ async def update_template_group(group_id: str, group: TemplateGroup) -> Template
                 detail=f"Group ID in URL ('{group_id}') doesn't match ID in body ('{group.group_id}')"
             )
 
-        template_manager = templates.manager.get_manager()
+        rule_manager = rules.manager.get_manager()
 
         # Check if group exists
-        if not template_manager.group_exists(group_id):
+        if not rule_manager.group_exists(group_id):
             raise HTTPException(
                 status_code=404,
                 detail=f"Group '{group_id}' not found. Use POST to create."
             )
 
         # Validate that all templates exist
-        template_manager.validate_group_templates(group)
-        return template_manager.save_group(group)
+        rule_manager.validate_group_rules(group)
+        return rule_manager.save_group(group)
     except HTTPException:
         raise
     except ValueError as e:
@@ -91,12 +91,12 @@ async def update_template_group(group_id: str, group: TemplateGroup) -> Template
         raise HTTPException(status_code=500, detail=f"Failed to update group: {str(e)}")
 
 
-@router.delete("/template-groups/{group_id}")
-async def delete_template_group(group_id: str) -> dict:
+@router.delete("/behavioral-rule-groups/{group_id}")
+async def delete_rule_group(group_id: str) -> dict:
     """Delete template group"""
     try:
-        template_manager = templates.manager.get_manager()
-        success = template_manager.delete_group(group_id)
+        rule_manager = rules.manager.get_manager()
+        success = rule_manager.delete_group(group_id)
         if not success:
             raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
         return {"message": f"Group '{group_id}' deleted successfully"}
@@ -107,7 +107,7 @@ async def delete_template_group(group_id: str) -> dict:
 
 
 @router.post("/rubric/criteria/behavioral-group/analyze")
-def analyze_behavioral_group(group: TemplateGroup, request: Request) -> GroupEvaluationResult:
+def analyze_behavioral_group(group: BehavioralRuleGroup, request: Request) -> GroupEvaluationResult:
     """
     Test evaluate a template group against reference model.
     Results are automatically saved to the group's JSON file.
@@ -123,7 +123,7 @@ def analyze_behavioral_group(group: TemplateGroup, request: Request) -> GroupEva
         result = evaluator.evaluate_group(group)
 
         # Save evaluation results to the group file (if it exists on disk)
-        template_manager = templates.manager.get_manager()
+        template_manager = rules.manager.get_manager()
         if template_manager.group_exists(group.group_id):
             template_manager.update_group_evaluation(group.group_id, result)
 
@@ -135,7 +135,7 @@ def analyze_behavioral_group(group: TemplateGroup, request: Request) -> GroupEva
 
 
 @router.post("/rubric/criteria/behavioral-group/{group_id}")
-async def add_behavioral_group_to_rubric(group_id: str, group: TemplateGroup, request: Request):
+async def add_behavioral_group_to_rubric(group_id: str, group: BehavioralRuleGroup, request: Request):
     """Add template group as rubric criterion"""
     base_path = request.app.state.base_path
     rubric = request.app.state.rubric
@@ -149,16 +149,16 @@ async def add_behavioral_group_to_rubric(group_id: str, group: TemplateGroup, re
             )
 
         # Save group to disk first
-        template_manager = templates.manager.get_manager()
-        template_manager.validate_group_templates(group)
-        template_manager.save_group(group)
+        rule_manager = rules.manager.get_manager()
+        rule_manager.validate_group_rules(group)
+        rule_manager.save_group(group)
 
         # CONSUMPTION LOGIC: Remove individual templates from rubric
-        for template_id in group.template_ids:
+        for rule_id in group.template_ids:
             index = next((i for i, c in enumerate(rubric.criteria)
-                          if c.id == template_id), -1)
+                          if c.id == rule_id), -1)
             if index != -1:
-                print(f"[Consumption] Removing template '{template_id}' from rubric")
+                print(f"[Consumption] Removing template '{rule_id}' from rubric")
                 del rubric.criteria[index]
 
         # Use "group:" prefix to distinguish from individual templates in rubric
@@ -175,18 +175,18 @@ async def add_behavioral_group_to_rubric(group_id: str, group: TemplateGroup, re
                 id=prefixed_group_id,
                 name=group.name,
                 description=group.description,
-                category=AlgorithmComplexity.COMPLEX,
+                check_complexity=CheckComplexity.COMPLEX,
                 inputs=[
-                    AlgorithmFormInput(
+                    CheckFormInput(
                         input_label="group_id",
-                        input_type=AlgorithmInputType.STRING,
+                        input_type=CheckInputType.STRING,
                         data=group.group_id,
                     )
                 ],
                 fulfilled=True,
                 confidence=1.0,
                 problematic_elements=[],
-                default_points=group.maxPoints,
+                default_points=group.maxPoints or 0.0,
                 custom_score=None,
             )
         )
