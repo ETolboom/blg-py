@@ -9,9 +9,19 @@ from rules.manager import BehavioralRule
 router = APIRouter()
 
 
+@router.get("/behavioral-rule-templates")
+async def get_templates() -> list[dict]:
+    """List all available rule templates"""
+    try:
+        rule_manager = rules.manager.get_manager()
+        return rule_manager.list_templates()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list templates: {str(e)}")
+
+
 @router.get("/behavioral-rules")
 async def get_rules() -> list[dict]:
-    """List all available rule rules"""
+    """List all available rules"""
     try:
         rule_manager = rules.manager.get_manager()
         return rule_manager.list_rules()
@@ -158,12 +168,15 @@ async def validate_rule(rule_id: str, request: Request) -> dict:
 
         if criterion_index != -1:
             # Update existing criterion
+            rubric.criteria[criterion_index].default_points = rule.maxPoints
             rubric.criteria[criterion_index].fulfilled = earned_points > 0
             rubric.criteria[criterion_index].confidence = result.confidence
             rubric.criteria[criterion_index].problematic_elements = problematic_elements
 
-            if round(earned_points, 2) != rubric.criteria[criterion_index].default_points:
+            if round(earned_points, 2) != round(rule.maxPoints, 2):
                 rubric.criteria[criterion_index].custom_score = earned_points
+            else:
+                rubric.criteria[criterion_index].custom_score = None
 
         affected_groups = []
         all_groups = rule_manager.list_groups()

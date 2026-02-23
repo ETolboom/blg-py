@@ -1,8 +1,6 @@
 .idea
 cache/
-example/submissions
-example/rubric.json
-example/templates
+example/
 target/
 __pycache__
 .DS_Store
@@ -10,3 +8,5 @@ __pycache__
 *.dylib
 *.dll
 *.pyd
+*.json
+uv.lock

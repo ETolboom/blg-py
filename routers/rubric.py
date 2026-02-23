@@ -86,20 +86,13 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: BehavioralRule, re
     rubric = request.app.state.rubric
 
     try:
-        # After model_post_init, nodes and edges are always lists
-        # Check if they're empty
-        nodes_empty = len(inputs.nodes) == 0
-        edges_empty = len(inputs.edges) == 0
+        rule_manager = rules.manager.get_manager()
 
-        # If nodes/edges are empty, load template from disk
-        if nodes_empty or edges_empty:
-            template_manager = rules.manager.get_manager()
-            loaded_rule = template_manager.get_rule(inputs.id)
-
-            if loaded_rule is not None:
-                # Use loaded template data
-                inputs = loaded_rule
-
+        # If no nodes/edges provided, try loading existing rule or seeding from template
+        if len(inputs.nodes) == 0 and len(inputs.edges) == 0:
+            template = rule_manager.get_template(inputs.id)
+            if template is not None:
+                inputs = template
 
         # Prevent any duplicates by removing old instances of the algorithm.
         index = next(
@@ -113,12 +106,11 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: BehavioralRule, re
         if index != -1:
             del rubric.criteria[index]
 
-        # Save template to disk first
-        with open(os.path.join(base_path, "templates", inputs.id+".json"), "w") as f:
-            f.write(inputs.model_dump_json())
+        # Save rule to disk
+        rule_manager.save_rule(inputs)
 
-        # Store only a reference to the template ID in the rubric
-        # The actual template data is loaded from disk when needed
+        # Store only a reference to the rule ID in the rubric
+        # The actual rule data is loaded from disk when needed
         rubric.criteria.append(
             RubricCriterion(
                 id=inputs.id,

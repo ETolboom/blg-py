@@ -116,9 +116,50 @@ class BehavioralRuleManager:
     def __init__(self, rules_dir: str = "example/rules"):
         self.rules_dir = Path(rules_dir)
         self.rules_dir.mkdir(parents=True, exist_ok=True)
+        self.templates_dir = self.rules_dir.parent / "templates"
+
+    def get_template(self, rule_id: str) -> Optional[BehavioralRule]:
+        """Load a read-only template by ID from the templates directory"""
+        safe_id = rule_id.replace("/", "_").replace("\\", "_")
+        template_path = self.templates_dir / f"{safe_id}.json"
+
+        if not template_path.exists():
+            return None
+
+        try:
+            with open(template_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return BehavioralRule(**data)
+        except ValidationError as e:
+            raise ValueError(f"Invalid template format: {e}")
+        except Exception as e:
+            raise IOError(f"Error loading template: {e}")
+
+    def list_templates(self) -> list[dict]:
+        """List all available templates with basic info"""
+        templates = []
+
+        if not self.templates_dir.exists():
+            return templates
+
+        for file_path in self.templates_dir.glob("*.json"):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    templates.append({
+                        "id": data.get("id"),
+                        "name": data.get("name"),
+                        "description": data.get("description"),
+                        "maxPoints": data.get("maxPoints"),
+                    })
+            except Exception as e:
+                print(f"Error loading template {file_path}: {e}")
+                continue
+
+        return templates
 
     def _get_rule_path(self, rule_id: str) -> Path:
-        """Get the file path for a template"""
+        """Get the file path for a rule"""
         # Sanitize the template ID to prevent directory traversal
         safe_id = rule_id.replace("/", "_").replace("\\", "_")
         return self.rules_dir / f"{safe_id}.json"
