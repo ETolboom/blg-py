@@ -30,10 +30,12 @@ dependencies = [
     "python-multipart>=0.0.22",
     "scikit-learn>=1.7.2",
     "scipy>=1.15.3",
+    "sentence-transformers>=5.2.3",
     "spacy>=3.8.11",
     "thefuzz>=0.22.1",
     "torch>=2.9.1",
     "transformers>=4.57.2",
+    "ty>=0.0.18",
     "uvicorn>=0.38.0",
 ]
 
