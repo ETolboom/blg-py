@@ -25,6 +25,16 @@ class PoolLaneCheck(Check):
 
     key_label: ClassVar[str] = "Pool name"
     value_label: ClassVar[str] = "Lane name"
+    input_scheme: ClassVar[list[CheckFormInput]] = [
+            CheckFormInput(
+                input_label="Pools and lanes",
+                input_type=CheckInputType.KEY_VALUE,
+                data=CheckKeyValueType(
+                    key_label=key_label, value_label=value_label, pairs=[]
+                ),
+                multiple=True,
+            ),
+        ]
 
     def analyze(
         self, inputs: list[CheckFormInput] | None = None
@@ -170,17 +180,6 @@ class PoolLaneCheck(Check):
             inputs=inputs,
         )
 
-    def inputs(self) -> list[CheckFormInput]:
-        return [
-            CheckFormInput(
-                input_label="Pools and lanes",
-                input_type=CheckInputType.KEY_VALUE,
-                data=CheckKeyValueType(
-                    key_label=self.key_label, value_label=self.value_label, pairs=[]
-                ),
-                multiple=True,
-            ),
-        ]
 
     def is_applicable(self) -> bool:
         try:

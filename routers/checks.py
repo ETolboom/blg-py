@@ -90,7 +90,7 @@ async def analyze_submission(filename: str, request: Request) -> Response | Rubr
                         description=group.description,
                         check_complexity=CheckComplexity.COMPLEX,
                         fulfilled=result.fulfilled,
-                        inputs=algorithm.inputs,
+                        inputs=algorithm.input_scheme,
                         confidence=result.overall_confidence,
                         problematic_elements=result.problematic_elements,
                         default_points=group.maxPoints,
@@ -126,7 +126,7 @@ async def analyze_submission(filename: str, request: Request) -> Response | Rubr
                         description=rule.description,
                         check_complexity=CheckComplexity.COMPLEX,
                         fulfilled=result.earned_points > 0,
-                        inputs=algorithm.inputs,  # Keep template_id reference
+                        inputs=algorithm.input_scheme,  # Keep template_id reference
                         confidence=result.confidence,
                         problematic_elements=problematic_elements,
                         default_points=rule.maxPoints,
@@ -135,7 +135,7 @@ async def analyze_submission(filename: str, request: Request) -> Response | Rubr
                 )
         else:
             # Standard check - use check manager
-            result = manager.get_check(algorithm.id).analyze(inputs=algorithm.inputs)
+            result = manager.get_check(algorithm.id).analyze(inputs=algorithm.input_scheme)
             parsed_algorithms.append(
                 RubricCriterion(
                     id=result.id,

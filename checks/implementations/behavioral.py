@@ -323,14 +323,11 @@ class BehavioralRuleCheck(Check):
     description: ClassVar[str] = "Check the model based on a complex set of rules"
     check_complexity: ClassVar[CheckComplexity] = CheckComplexity.COMPLEX
     threshold: ClassVar[float] = 0.0
+    input_scheme: ClassVar[list[CheckFormInput]] = []
 
     def is_applicable(self) -> bool:
         # Should not appear during onboarding
         return False
-
-    def inputs(self) -> list[CheckFormInput]:
-        # Behavioral rules have different logic
-        return []
 
     def analyze_tree(self, tree: DecisionTreeNode) -> tuple[bool, list[str], float]:
         """

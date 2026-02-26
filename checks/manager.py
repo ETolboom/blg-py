@@ -82,7 +82,7 @@ class CheckManager:
         for check in self.checks.values():
             entry: dict[str, str | list[CheckFormInput]] = {
                 "id": check.id,
-                "inputs": check.inputs(),
+                "inputs": check.input_scheme(),
                 "check_complexity": check.check_complexity,
                 "name": check.name,
             }

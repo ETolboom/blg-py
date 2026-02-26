@@ -103,6 +103,7 @@ class Check(BaseModel, ABC):
     description: ClassVar[str]
     check_complexity: ClassVar[CheckComplexity]
     threshold: ClassVar[float] = 0.0
+    input_scheme: ClassVar[list[CheckFormInput]]
 
     # This field must be provided at instantiation
     model_xml: str
@@ -110,11 +111,6 @@ class Check(BaseModel, ABC):
     @abstractmethod
     def analyze(self, inputs: list[CheckFormInput] | None) -> CheckResult:
         """Analyze a given property based on inputs if available"""
-        pass
-
-    @abstractmethod
-    def inputs(self) -> list[CheckFormInput]:
-        """Return the available form inputs for the check"""
         pass
 
     @abstractmethod

@@ -16,7 +16,8 @@ class Synchronization(Check):
     description: ClassVar[str] = (
         "The process model properly synchronizes concurrent activities."
     )
-    check_complexity: ClassVar[CheckComplexity] =  CheckComplexity.SIMPLE
+    check_complexity: ClassVar[CheckComplexity] = CheckComplexity.SIMPLE
+    input_scheme: ClassVar[list[CheckFormInput]] = []
 
     def analyze(self, inputs: list[CheckFormInput] | None = None) -> CheckResult:
         result = blg.analyze_safeness(self.model_xml)
@@ -29,9 +30,6 @@ class Synchronization(Check):
             problematic_elements=result.problematic_elements,
         )
 
-    def inputs(self) -> list[CheckFormInput]:
-        return []
-
     def is_applicable(self) -> bool:
         return True
 
@@ -43,6 +41,7 @@ class DeadActivity(Check):
         "All activities in the process model are reachable and can be executed"
     )
     check_complexity: ClassVar[CheckComplexity] = CheckComplexity.SIMPLE
+    input_scheme: ClassVar[list[CheckFormInput]] = []
 
     def analyze(self, inputs: list[CheckFormInput] | None = None) -> CheckResult:
         result = blg.analyze_dead_activities(self.model_xml)
@@ -55,9 +54,6 @@ class DeadActivity(Check):
             problematic_elements=result.problematic_elements,
         )
 
-    def inputs(self) -> list[CheckFormInput]:
-        return []
-
     def is_applicable(self) -> bool:
         return True
 
@@ -69,6 +65,7 @@ class ProperCompletion(Check):
         "There is a single unambiguous way to reach the final end event."
     )
     check_complexity: ClassVar[CheckComplexity] = CheckComplexity.SIMPLE
+    input_scheme: ClassVar[list[CheckFormInput]] = []
 
     def analyze(self, inputs: list[CheckFormInput] | None = None) -> CheckResult:
         result = blg.analyze_proper_completion(self.model_xml)
@@ -81,9 +78,6 @@ class ProperCompletion(Check):
             problematic_elements=result.problematic_elements,
         )
 
-    def inputs(self) -> list[CheckFormInput]:
-        return []
-
     def is_applicable(self) -> bool:
         return True
 
@@ -95,6 +89,7 @@ class OptionToComplete(Check):
         "The process model can definitively reach its end state. E.g., no deadlocks"
     )
     check_complexity: ClassVar[CheckComplexity] = CheckComplexity.SIMPLE
+    input_scheme: ClassVar[list[CheckFormInput]] = []
 
     def analyze(self, inputs: list[CheckFormInput] | None = None) -> CheckResult:
         result = blg.analyze_option_to_complete(self.model_xml)
@@ -106,9 +101,6 @@ class OptionToComplete(Check):
             fulfilled=result.fulfilled,
             problematic_elements=result.problematic_elements,
         )
-
-    def inputs(self) -> list[CheckFormInput]:
-        return []
 
     def is_applicable(self) -> bool:
         return True

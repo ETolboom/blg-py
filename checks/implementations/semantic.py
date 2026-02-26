@@ -21,6 +21,7 @@ class AtomicityCheck(Check):
     description: ClassVar[str] = "Check the task labels for atomicity"
     check_complexity: ClassVar[CheckComplexity] = CheckComplexity.SIMPLE
     threshold: ClassVar[float] = 0.85
+    input_scheme: ClassVar[list[CheckFormInput]] = []
 
     def analyze(
         self, inputs: list[CheckFormInput] | None = None
@@ -43,9 +44,6 @@ class AtomicityCheck(Check):
             problematic_elements=problematic_elements,
         )
 
-    def inputs(self) -> list[CheckFormInput]:
-        return []
-
     def is_applicable(self) -> bool:
         return True
 
@@ -58,6 +56,7 @@ class ExactDuplicateTasks(Check):
     )
     check_complexity: ClassVar[CheckComplexity] = CheckComplexity.SIMPLE
     threshold: ClassVar[float] = 0.90
+    input_scheme: ClassVar[list[CheckFormInput]] = []
 
     def analyze(
         self, inputs: list[CheckFormInput] | None = None
@@ -79,9 +78,6 @@ class ExactDuplicateTasks(Check):
             problematic_elements=problematic_elements,
         )
 
-    def inputs(self) -> list[CheckFormInput]:
-        return []
-
     def is_applicable(self) -> bool:
         return True
 
@@ -94,6 +90,7 @@ class SemanticDuplicateTasks(Check):
     )
     check_complexity: ClassVar[CheckComplexity] = CheckComplexity.SIMPLE
     threshold: ClassVar[float] = 0.75
+    input_scheme: ClassVar[list[CheckFormInput]] = []
 
     def analyze(
         self, inputs: list[CheckFormInput] | None = None
@@ -114,9 +111,6 @@ class SemanticDuplicateTasks(Check):
             fulfilled=(len(problematic_elements) == 0),
             problematic_elements=problematic_elements,
         )
-
-    def inputs(self) -> list[CheckFormInput]:
-        return []
 
     def is_applicable(self) -> bool:
         return True
