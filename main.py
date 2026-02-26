@@ -22,7 +22,16 @@ def get_rubric_from_disk(base_path: str) -> Rubric | None:
             with open(os.path.join(base_path, "rubric.json")) as file:
                 rubric_data = json.load(file)
             print("Rubric loaded successfully")
-            return Rubric(**rubric_data)
+            rubric = Rubric(**rubric_data)
+
+            # Load reference XML from separate file
+            ref_path = os.path.join(base_path, "reference.bpmn")
+            if os.path.exists(ref_path):
+                with open(ref_path) as f:
+                    rubric.assignment.reference_xml = f.read()
+                print("Reference XML loaded from reference.bpmn")
+
+            return rubric
         except json.JSONDecodeError:
             print("Error: rubric.json contains invalid JSON")
             return None

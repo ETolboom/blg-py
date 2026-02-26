@@ -40,6 +40,9 @@ class Rubric(BaseModel):
     criteria: list[RubricCriterion]
     assignment: Assignment | None
 
+    def to_disk_json(self) -> str:
+        return self.model_dump_json(exclude={"assignment": {"reference_xml"}})
+
     def to_excel_worksheet(self, workbook: Workbook, filename: str) -> None:
         worksheet = workbook.create_sheet(filename)
 

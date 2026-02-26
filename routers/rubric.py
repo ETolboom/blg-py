@@ -62,9 +62,14 @@ async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric, request:
     request.app.state.rubric = new_rubric
     request.app.state.submission_service.rubric = new_rubric
 
+    # Write reference XML to separate file
+    if ref_xml:
+        with open(os.path.join(base_path, "reference.bpmn"), "w") as f:
+            f.write(ref_xml)
+
     # Write new rubric to file so it persists
     with open(os.path.join(base_path, "rubric.json"), "w") as f:
-        f.write(new_rubric.model_dump_json())
+        f.write(new_rubric.to_disk_json())
 
     request.app.state.submission_service.invalidate_all_results()
 
@@ -139,7 +144,7 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: BehavioralRule, re
 
         # Write new rubric to file so it persists
         with open(os.path.join(base_path, "rubric.json"), "w") as f:
-            f.write(rubric.model_dump_json())
+            f.write(rubric.to_disk_json())
 
         request.app.state.submission_service.invalidate_all_results()
 
@@ -198,7 +203,7 @@ async def update_criteria(
 
         # Write new rubric to file so it persists
         with open(os.path.join(base_path, "rubric.json"), "w") as f:
-            f.write(rubric.model_dump_json())
+            f.write(rubric.to_disk_json())
 
         request.app.state.submission_service.invalidate_all_results()
 
@@ -228,7 +233,7 @@ async def update_rubric_description(req: Request) -> None:
     req.app.state.submission_service.rubric = rubric
 
     with open(os.path.join(base_path, "rubric.json"), "w") as f:
-        f.write(rubric.model_dump_json())
+        f.write(rubric.to_disk_json())
 
     req.app.state.submission_service.invalidate_all_results()
 
@@ -264,7 +269,7 @@ async def delete_rubric_criterion(criterion_id: str, request: Request, rule_mana
             request.app.state.submission_service.rubric = rubric
 
             with open(os.path.join(base_path, "rubric.json"), "w") as f:
-                f.write(rubric.model_dump_json())
+                f.write(rubric.to_disk_json())
 
             request.app.state.submission_service.invalidate_all_results()
 
@@ -298,7 +303,7 @@ async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: st
         request.app.state.submission_service.rubric = rubric
 
         with open(os.path.join(base_path, "rubric.json"), "w") as f:
-            f.write(rubric.model_dump_json())
+            f.write(rubric.to_disk_json())
 
         request.app.state.submission_service.invalidate_all_results()
 
@@ -363,7 +368,7 @@ async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: st
 
     # Save rubric
     with open(os.path.join(base_path, "rubric.json"), "w") as f:
-        f.write(rubric.model_dump_json())
+        f.write(rubric.to_disk_json())
 
     request.app.state.submission_service.invalidate_all_results()
 

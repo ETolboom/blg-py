@@ -216,7 +216,7 @@ async def add_behavioral_group_to_rubric(group_id: str, group: BehavioralRuleGro
 
         # Persist rubric
         with open(os.path.join(base_path, "rubric.json"), "w") as f:
-            f.write(rubric.model_dump_json())
+            f.write(rubric.to_disk_json())
 
         request.app.state.submission_service.invalidate_all_results()
 
