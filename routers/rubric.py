@@ -1,4 +1,3 @@
-import asyncio
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -62,6 +61,7 @@ async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric, request:
 
     # Update app state
     request.app.state.rubric = new_rubric
+    request.app.state.submission_service.rubric = new_rubric
 
     # Write new rubric to file so it persists
     with open(os.path.join(base_path, "rubric.json"), "w") as f:
@@ -135,6 +135,7 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: BehavioralRule, re
 
         # Update app state
         request.app.state.rubric = rubric
+        request.app.state.submission_service.rubric = rubric
 
         # Write new rubric to file so it persists
         with open(os.path.join(base_path, "rubric.json"), "w") as f:
@@ -191,6 +192,7 @@ async def update_criteria(
 
         # Update app state
         request.app.state.rubric = rubric
+        request.app.state.submission_service.rubric = rubric
 
         # Write new rubric to file so it persists
         with open(os.path.join(base_path, "rubric.json"), "w") as f:
@@ -212,18 +214,17 @@ async def update_rubric_description(req: Request) -> None:
     if not description:
         raise HTTPException(status_code=400, detail="request body is missing")
 
-    description_lock = asyncio.Lock()
-    async with description_lock:
-        description = description.decode("utf-8")
+    description = description.decode("utf-8")
 
-        if rubric and rubric.assignment:
-            rubric.assignment.description = description
+    if rubric and rubric.assignment:
+        rubric.assignment.description = description
 
-        # Update app state
-        req.app.state.rubric = rubric
+    # Update app state
+    req.app.state.rubric = rubric
+    req.app.state.submission_service.rubric = rubric
 
-        with open(os.path.join(base_path, "rubric.json"), "w") as f:
-            f.write(rubric.model_dump_json())
+    with open(os.path.join(base_path, "rubric.json"), "w") as f:
+        f.write(rubric.model_dump_json())
 
 
 @router.delete("/rubric/criteria/{criterion_id}")
@@ -254,6 +255,7 @@ async def delete_rubric_criterion(criterion_id: str, request: Request) -> dict:
 
             # Update app state
             request.app.state.rubric = rubric
+            request.app.state.submission_service.rubric = rubric
 
             with open(os.path.join(base_path, "rubric.json"), "w") as f:
                 f.write(rubric.model_dump_json())
@@ -286,6 +288,7 @@ async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: st
 
         # Update app state
         request.app.state.rubric = rubric
+        request.app.state.submission_service.rubric = rubric
 
         with open(os.path.join(base_path, "rubric.json"), "w") as f:
             f.write(rubric.model_dump_json())
@@ -347,6 +350,7 @@ async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: st
 
     # Update app state
     request.app.state.rubric = rubric
+    request.app.state.submission_service.rubric = rubric
 
     # Save rubric
     with open(os.path.join(base_path, "rubric.json"), "w") as f:
