@@ -1,5 +1,6 @@
 from typing import ClassVar, Optional
 from dataclasses import dataclass, field
+from collections import deque
 
 from checks import Check, CheckComplexity, CheckFormInput, CheckResult
 from pydantic import BaseModel
@@ -389,10 +390,10 @@ class BehavioralRuleCheck(Check):
         for branch in branches:
             connectors_in_path: set[str] = set()
             visited: set[str] = set()
-            queue = [branch]
+            queue = deque([branch])
 
             while queue:
-                current = queue.pop(0)
+                current = queue.popleft()
 
                 if current.id in visited:
                     continue
@@ -421,10 +422,10 @@ class BehavioralRuleCheck(Check):
 
         # If multiple common connectors, return the closest one (first one encountered in BFS from any branch)
         visited: set[str] = set()
-        queue = [branches[0]]
+        queue = deque([branches[0]])
 
         while queue:
-            current = queue.pop(0)
+            current = queue.popleft()
 
             if current.id in visited:
                 continue
