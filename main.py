@@ -44,9 +44,6 @@ app.include_router(behavioral_rule_groups.router, prefix="/api", tags=["behavior
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 1:
-        print("Usage: python main.py <folder path>")
-        sys.exit(1)
     if len(sys.argv) < 2:
         print("Error: Please provide a folder path")
         print("Usage: python main.py <folder path>")
@@ -70,4 +67,4 @@ if __name__ == "__main__":
     app.state.base_path = base_path
     app.state.rubric = get_rubric_from_disk(base_path)
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)
