@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import ClassVar
 from dataclasses import dataclass, field
 from collections import deque
@@ -107,10 +109,10 @@ class DecisionTreeNode(BaseModel):
 
     # For gateway nodes
     outcomes: list[str] | None = None
-    children: dict[str, "DecisionTreeNode"] | None = None
+    children: dict[str, DecisionTreeNode] | None = None
 
     # For element nodes
-    next_node: "DecisionTreeNode" | None = None
+    next_node: DecisionTreeNode | None = None
 
     # For tracking problematic paths
     is_problematic: bool = False

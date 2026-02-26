@@ -23,6 +23,11 @@ class AtomicityCheck(Check):
     threshold: ClassVar[float] = 0.85
     input_scheme: ClassVar[list[CheckFormInput]] = []
 
+    @classmethod
+    def load_dependencies(cls) -> None:
+        """Load spacy model required for atomicity checking"""
+        load_spacy_model()
+
     def analyze(
         self, inputs: list[CheckFormInput] | None = None
     ) -> CheckResult:
@@ -118,11 +123,27 @@ class SemanticDuplicateTasks(Check):
 
 # Helpers
 
-nlp = spacy.load("en_core_web_md")
+_nlp: spacy.language.Language | None = None
+
+
+def load_spacy_model() -> None:
+    """Load the spacy model. Must be called before using semantic checks."""
+    global _nlp
+    if _nlp is None:
+        print("Loading spacy model...")
+        _nlp = spacy.load("en_core_web_md")
+        print("Spacy model loaded successfully")
+
+
+def _get_nlp() -> spacy.language.Language:
+    """Get the loaded spacy model, raising an error if not loaded."""
+    if _nlp is None:
+        raise RuntimeError("Spacy model not loaded. Call load_spacy_model() first.")
+    return _nlp
 
 
 def check_single_action(label: str) -> bool:
-    doc = nlp(label)
+    doc = _get_nlp()(label)
     verbs = [token for token in doc if token.pos_ == "VERB"]
     return len(verbs) <= 1
 

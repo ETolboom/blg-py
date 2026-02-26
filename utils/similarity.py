@@ -1,13 +1,31 @@
 import torch
 from sentence_transformers import SentenceTransformer
 
-model: SentenceTransformer = SentenceTransformer(
-    "sentence-transformers/all-mpnet-base-v2", cache_folder="./cache"
-)
+_model: SentenceTransformer | None = None
+
+
+def load_model() -> None:
+    """Load the sentence transformer model. Must be called before using similarity functions."""
+    global _model
+    if _model is None:
+        print("Loading sentence transformer model...")
+        _model = SentenceTransformer(
+            "sentence-transformers/all-mpnet-base-v2", cache_folder="./cache"
+        )
+        print("Sentence transformer model loaded successfully")
+
+
+def _get_model() -> SentenceTransformer:
+    """Get the loaded model, raising an error if not loaded."""
+    if _model is None:
+        raise RuntimeError(
+            "Sentence transformer model not loaded. Call load_model() first."
+        )
+    return _model
 
 
 def _embed(labels: list[str]) -> torch.Tensor:
-    return torch.tensor(model.encode(labels, normalize_embeddings=True))
+    return torch.tensor(_get_model().encode(labels, normalize_embeddings=True))
 
 
 def create_similarity_matrix(

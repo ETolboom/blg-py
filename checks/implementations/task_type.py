@@ -12,6 +12,17 @@ class TaskTypeCheck(Check):
     description: ClassVar[str] = "Check if all available tasks are of the correct type"
     check_complexity: ClassVar[CheckComplexity] = CheckComplexity.CONFIGURABLE
     threshold: ClassVar[float] = 0.7
+
+    acceptable_task_types: list[str] = [
+        "serviceTask",
+        "sendTask",
+        "receiveTask",
+        "userTask",
+        "manualTask",
+        "businessRuleTask",
+        "scriptTask",
+    ]
+
     input_scheme: ClassVar[list[CheckFormInput]] = [
         CheckFormInput(
             input_label="Labels and Task Types",
@@ -25,15 +36,11 @@ class TaskTypeCheck(Check):
         ),
     ]
 
-    acceptable_task_types: list[str] = [
-        "serviceTask",
-        "sendTask",
-        "receiveTask",
-        "userTask",
-        "manualTask",
-        "businessRuleTask",
-        "scriptTask",
-    ]
+    @classmethod
+    def load_dependencies(cls) -> None:
+        """Load sentence transformer model for semantic matching"""
+        from utils.similarity import load_model
+        load_model()
 
     def is_applicable(self) -> bool:
         tasks = extract_all_tasks(self.model_xml, allow_abstract=True)

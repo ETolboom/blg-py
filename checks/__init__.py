@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, ClassVar
+from typing import Any, Callable, ClassVar
 
 from pydantic import (
     BaseModel,
@@ -107,6 +107,24 @@ class Check(BaseModel, ABC):
 
     # This field must be provided at instantiation
     model_xml: str
+
+    @classmethod
+    def load_dependencies(cls) -> None:
+        """
+        Load any heavy dependencies (ML models, etc.) required by this check.
+
+        This method is called once during startup before any checks are instantiated.
+        Subclasses should override this to load models, tokenizers, etc.
+
+        Example:
+            @classmethod
+            def load_dependencies(cls) -> None:
+                global _my_model
+                if _my_model is None:
+                    print(f"Loading model for {cls.name}...")
+                    _my_model = load_expensive_model()
+        """
+        pass  # Default: no dependencies
 
     @abstractmethod
     def analyze(self, inputs: list[CheckFormInput] | None) -> CheckResult:

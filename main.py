@@ -56,7 +56,7 @@ if __name__ == "__main__":
         print("Usage: python main.py <folder path>")
         sys.exit(1)
 
-    # Load checks during startup
+    # Load checks during startup (dependencies loaded automatically)
     try:
         checks.manager.load_checks()
     except Exception as e:
