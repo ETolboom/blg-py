@@ -100,6 +100,19 @@ class Pool:
     # Lanes contains information on all lanes within a pool.
     lanes: list[LaneElement] = field(default_factory=list)
 
+    # O(1) lookup indices — populated by Bpmn.__parse_xml after the lists are built.
+    # Prefer get_element() / get_flow() over accessing these dicts directly.
+    elements_by_id: dict[str, "PoolElement"] = field(default_factory=dict)
+    flows_by_id: dict[str, "FlowElement"] = field(default_factory=dict)
+
+    def get_element(self, element_id: str) -> "PoolElement | None":
+        """Return the element with *element_id*, or None if not present."""
+        return self.elements_by_id.get(element_id)
+
+    def get_flow(self, flow_id: str) -> "FlowElement | None":
+        """Return the flow with *flow_id*, or None if not present."""
+        return self.flows_by_id.get(flow_id)
+
 
 def parse_lane_set(lane_set: Element) -> list[LaneElement]:
     lanes: list[LaneElement] = []

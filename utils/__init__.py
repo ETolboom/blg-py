@@ -1,3 +1,4 @@
+import functools
 import logging
 from dataclasses import dataclass
 from enum import Enum
@@ -54,6 +55,7 @@ class ExtractedTask:
     id: str
     task_type: str
 
+@functools.lru_cache(maxsize=16)
 def extract_all_tasks(model_xml: str, allow_abstract: bool = True) -> list[ExtractedTask]:
     """
     Find all tasks in a model.

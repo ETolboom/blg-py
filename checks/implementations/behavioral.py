@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from checks import Check, CheckComplexity, CheckFormInput, CheckResult
 from pydantic import BaseModel
 
-from bpmn.bpmn import Bpmn
+from bpmn.bpmn import get_bpmn, Bpmn
 from bpmn.struct import PoolElement
 
 logger = logging.getLogger(__name__)
@@ -747,7 +747,7 @@ class BehavioralRuleCheck(Check):
             logger.debug("  - %s connector (ID: %s, min_visits: %d)", conn.node_type, conn_id, conn.minimum_visit_count)
 
         # 3. Parse BPMN model
-        model = Bpmn(self.model_xml)
+        model = get_bpmn(self.model_xml)
 
         # 4. Find starting BPMN element
         result = model.find_task(workflow_start.data.label, match_threshold=0.8)

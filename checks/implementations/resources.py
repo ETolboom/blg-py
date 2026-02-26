@@ -10,7 +10,7 @@ from checks import (
     CheckKeyValueType,
     CheckResult,
 )
-from bpmn.bpmn import Bpmn
+from bpmn.bpmn import get_bpmn
 from utils import get_elements_by_type
 from utils.similarity import match_labels
 
@@ -35,7 +35,7 @@ class PoolLaneCheck(Check):
         if inputs is None:
             # Analyze pools & lanes whilst taking reference xml as ground truth.
             inputs = []
-            model = Bpmn(self.model_xml)
+            model = get_bpmn(self.model_xml)
 
             for pool in model.pools:
                 inputs.append(
@@ -76,7 +76,7 @@ class PoolLaneCheck(Check):
             )
 
         # Parse model_xml into Bpmn
-        model = Bpmn(self.model_xml)
+        model = get_bpmn(self.model_xml)
 
         # Extract pools
         pools = [(pool.name, pool.id) for pool in model.pools]

@@ -1,3 +1,4 @@
+import functools
 import logging
 from xml.etree import ElementTree
 
@@ -12,6 +13,9 @@ class Bpmn:
 
     def __init__(self, xml_string: str) -> None:
         self.pools: list[Pool] = []
+        # Cross-pool index: element_id -> (Pool, PoolElement). Used for O(1) starting-element
+        # lookups that must search across all pools (e.g. find_next_task / find_next_gateway).
+        self._elements_by_id: dict[str, tuple[Pool, PoolElement]] = {}
         self.__parse_xml(xml_string)
 
     def __str__(self):
@@ -93,7 +97,13 @@ class Bpmn:
                             element.boundary_events.append(boundary_event_id)
 
             parsed_pool.elements = pool_elements
+            # Build per-pool O(1) indices
+            parsed_pool.elements_by_id = {e.id: e for e in pool_elements}
+            parsed_pool.flows_by_id = {f.id: f for f in parsed_pool.flows}
             self.pools.append(parsed_pool)
+            # Extend the cross-pool index
+            for element in pool_elements:
+                self._elements_by_id[element.id] = (parsed_pool, element)
 
     def find_task(self, task_label: str, match_threshold: float = 0.6) -> tuple[PoolElement, float] | None:
         # Collect all elements with labels
@@ -123,23 +133,15 @@ class Bpmn:
     def _search_task_in_path(self, flow_id: str, pool: Pool, task_label: str, match_threshold: float, max_distance: int, current_distance: int) -> tuple[int, PoolElement | None, float]:
         """Helper method to search for a task along a specific flow path"""
         # Find the target of this flow
-        target_element_id = None
-        for flow in pool.flows:
-            if flow.id == flow_id:
-                target_element_id = flow.target
-                break
-
-        if not target_element_id:
+        flow = pool.get_flow(flow_id)
+        if not flow:
             logger.debug("[_search_task_in_path] Flow '%s' not found", flow_id)
             return -1, None, 0.0
 
-        # Find the target element
-        target_element = None
-        for element in pool.elements:
-            if element.id == target_element_id:
-                target_element = element
-                break
+        target_element_id = flow.target
 
+        # Find the target element
+        target_element = pool.get_element(target_element_id)
         if not target_element:
             logger.debug("[_search_task_in_path] Target element '%s' not found", target_element_id)
             return -1, None, 0.0
@@ -198,20 +200,10 @@ class Bpmn:
         logger.debug("[find_next_task] Looking for TASK: '%s' (max_distance=%d, threshold=%.3f)", task_label, max_distance, match_threshold)
 
         # 1. Find the exact starting element
-        starting_element: PoolElement | None = None
-        pool_for_element: Pool | None = None
-
-        for pool in self.pools:
-            for element in pool.elements:
-                if element.id == starting_element_id:
-                    starting_element = element
-                    pool_for_element = pool
-                    break
-            if starting_element:
-                break
-
-        if not starting_element or not pool_for_element:
+        lookup = self._elements_by_id.get(starting_element_id)
+        if not lookup:
             raise ValueError(f"Starting element with id '{starting_element_id}' not found")
+        pool_for_element, starting_element = lookup
 
         logger.debug("[find_next_task] Starting element: '%s' (ID: %s)", starting_element.label, starting_element.id)
         logger.debug("[find_next_task] Outgoing connections: %s", starting_element.outgoing)
@@ -228,12 +220,7 @@ class Bpmn:
                 logger.debug("[find_next_task] Element has %d boundary event(s), checking them first", len(current_element.boundary_events))
                 for boundary_event_id in current_element.boundary_events:
                     # Find the boundary event element
-                    boundary_event = None
-                    for element in pool_for_element.elements:
-                        if element.id == boundary_event_id:
-                            boundary_event = element
-                            break
-
+                    boundary_event = pool_for_element.get_element(boundary_event_id)
                     if not boundary_event:
                         logger.debug("[find_next_task] Boundary event '%s' not found, skipping", boundary_event_id)
                         continue
@@ -303,29 +290,17 @@ class Bpmn:
             logger.debug("[find_next_task] Following flow ID: %s", outgoing_flow_id)
 
             # Find the flow in the pool's flows
-            target_element_id = None
-            for flow in pool_for_element.flows:
-                if flow.id == outgoing_flow_id:
-                    target_element_id = flow.target
-                    break
-
-            if not target_element_id:
-                # Flow not found
+            flow = pool_for_element.get_flow(outgoing_flow_id)
+            if not flow:
                 logger.debug("[find_next_task] Flow '%s' not found in pool flows, stopping", outgoing_flow_id)
                 return -1, None, 0.0
 
-            logger.debug("[find_next_task] Flow targets element ID: %s", target_element_id)
+            logger.debug("[find_next_task] Flow targets element ID: %s", flow.target)
 
             # Find the target element
-            next_element = None
-            for element in pool_for_element.elements:
-                if element.id == target_element_id:
-                    next_element = element
-                    break
-
+            next_element = pool_for_element.get_element(flow.target)
             if not next_element:
-                # Target element not found
-                logger.debug("[find_next_task] Target element '%s' not found, stopping", target_element_id)
+                logger.debug("[find_next_task] Target element '%s' not found, stopping", flow.target)
                 return -1, None, 0.0
 
             # 3. Increment visit count
@@ -394,10 +369,9 @@ class Bpmn:
             # Get the labels of the outgoing flows
             flow_labels = []
             for flow_id in gateway.outgoing:
-                for flow in pool.flows:
-                    if flow.id == flow_id:
-                        flow_labels.append(flow.label)
-                        break
+                flow = pool.get_flow(flow_id)
+                if flow:
+                    flow_labels.append(flow.label)
 
             logger.debug("[_check_gateway_match] Gateway outgoing flow labels: %s", flow_labels)
             logger.debug("[_check_gateway_match] Expected outcome labels: %s", outcome_labels)
@@ -484,20 +458,10 @@ class Bpmn:
         logger.debug("[find_next_gateway] Normalized gateway type: '%s'", normalized_gateway_type)
 
         # 1. Find the exact starting element
-        starting_element: PoolElement | None = None
-        pool_for_element: Pool | None = None
-
-        for pool in self.pools:
-            for element in pool.elements:
-                if element.id == starting_element_id:
-                    starting_element = element
-                    pool_for_element = pool
-                    break
-            if starting_element:
-                break
-
-        if not starting_element or not pool_for_element:
+        lookup = self._elements_by_id.get(starting_element_id)
+        if not lookup:
             raise ValueError(f"Starting element with id '{starting_element_id}' not found")
+        pool_for_element, starting_element = lookup
 
         logger.debug("[find_next_gateway] Starting element: '%s' (ID: %s)", starting_element.label, starting_element.id)
         logger.debug("[find_next_gateway] Outgoing connections: %s", starting_element.outgoing)
@@ -513,12 +477,7 @@ class Bpmn:
                 logger.debug("[find_next_gateway] Element has %d boundary event(s), checking them first", len(current_element.boundary_events))
                 for boundary_event_id in current_element.boundary_events:
                     # Find the boundary event element
-                    boundary_event = None
-                    for element in pool_for_element.elements:
-                        if element.id == boundary_event_id:
-                            boundary_event = element
-                            break
-
+                    boundary_event = pool_for_element.get_element(boundary_event_id)
                     if not boundary_event:
                         logger.debug("[find_next_gateway] Boundary event '%s' not found, skipping", boundary_event_id)
                         continue
@@ -535,23 +494,11 @@ class Bpmn:
                     # Check the boundary event's outgoing paths for gateways
                     if boundary_event.outgoing:
                         for outgoing_flow_id in boundary_event.outgoing:
-                            # Find the flow target
-                            target_element_id = None
-                            for flow in pool_for_element.flows:
-                                if flow.id == outgoing_flow_id:
-                                    target_element_id = flow.target
-                                    break
-
-                            if not target_element_id:
+                            flow = pool_for_element.get_flow(outgoing_flow_id)
+                            if not flow:
                                 continue
 
-                            # Find the target element
-                            next_element = None
-                            for element in pool_for_element.elements:
-                                if element.id == target_element_id:
-                                    next_element = element
-                                    break
-
+                            next_element = pool_for_element.get_element(flow.target)
                             if not next_element:
                                 continue
 
@@ -577,28 +524,16 @@ class Bpmn:
             for outgoing_flow_id in current_element.outgoing:
                 logger.debug("[find_next_gateway] Checking flow ID: %s", outgoing_flow_id)
 
-                # Find the flow in the pool's flows
-                target_element_id = None
-                for flow in pool_for_element.flows:
-                    if flow.id == outgoing_flow_id:
-                        target_element_id = flow.target
-                        break
-
-                if not target_element_id:
+                flow = pool_for_element.get_flow(outgoing_flow_id)
+                if not flow:
                     logger.debug("[find_next_gateway] Flow '%s' not found, skipping", outgoing_flow_id)
                     continue
 
-                logger.debug("[find_next_gateway] Flow targets element ID: %s", target_element_id)
+                logger.debug("[find_next_gateway] Flow targets element ID: %s", flow.target)
 
-                # Find the target element
-                next_element = None
-                for element in pool_for_element.elements:
-                    if element.id == target_element_id:
-                        next_element = element
-                        break
-
+                next_element = pool_for_element.get_element(flow.target)
                 if not next_element:
-                    logger.debug("[find_next_gateway] Target element '%s' not found, skipping", target_element_id)
+                    logger.debug("[find_next_gateway] Target element '%s' not found, skipping", flow.target)
                     continue
 
                 logger.debug("[find_next_gateway] Found element '%s' (type: %s)", next_element.label, next_element.name)
@@ -629,20 +564,16 @@ class Bpmn:
                 if is_current_gateway or len(current_element.outgoing) == 1:
                     # Take first outgoing flow to continue
                     outgoing_flow_id = current_element.outgoing[0]
-                    target_element_id = None
-                    for flow in pool_for_element.flows:
-                        if flow.id == outgoing_flow_id:
-                            target_element_id = flow.target
-                            break
-
-                    if target_element_id:
-                        for element in pool_for_element.elements:
-                            if element.id == target_element_id:
-                                current_element = element
-                                logger.debug("[find_next_gateway] Moving to next element: '%s' (type: %s)", current_element.label, current_element.name)
-                                break
-                    else:
+                    flow = pool_for_element.get_flow(outgoing_flow_id)
+                    if not flow:
                         return -1, None, 0.0
+
+                    next_element = pool_for_element.get_element(flow.target)
+                    if not next_element:
+                        return -1, None, 0.0
+
+                    current_element = next_element
+                    logger.debug("[find_next_gateway] Moving to next element: '%s' (type: %s)", current_element.label, current_element.name)
                 else:
                     logger.debug("[find_next_gateway] Current element is not a gateway and has %d outgoing edges, stopping", len(current_element.outgoing))
                     return -1, None, 0.0
@@ -661,3 +592,19 @@ class Bpmn:
                 continue
 
         return tasks
+
+
+@functools.lru_cache(maxsize=16)
+def get_bpmn(xml_string: str) -> Bpmn:
+    """Return a cached, parsed Bpmn for *xml_string*.
+
+    The cache avoids re-parsing the same XML when multiple checks run against
+    the same model within one request.  maxsize=16 is enough to cover a
+    typical session (one reference model + a handful of student submissions)
+    without unbounded memory growth.
+
+    Note: PoolElement.flagged is mutated during behavioral traversal but is
+    not read back when producing results, so sharing the cached object across
+    evaluations is safe in practice.
+    """
+    return Bpmn(xml_string)
