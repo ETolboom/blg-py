@@ -1,18 +1,17 @@
 import json
 import os
 import sys
+from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
 from pydantic import ValidationError
 
-import checks.manager
+from checks.manager import CheckRegistry
 from routers import submissions, rubric
 from routers import checks as checks_router
 from routers import behavioral_rules, behavioral_rule_groups
 from rubric import Rubric
-
-app = FastAPI()
 
 
 def get_rubric_from_disk(base_path: str) -> Rubric | None:
@@ -35,6 +34,23 @@ def get_rubric_from_disk(base_path: str) -> Rubric | None:
         return None
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    base_path = app.state.base_path
+
+    # Load checks during startup
+    registry = CheckRegistry()
+    registry.load()
+    app.state.check_registry = registry
+
+    # Load rubric from disk
+    app.state.rubric = get_rubric_from_disk(base_path)
+
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+
 # Register routers
 app.include_router(submissions.router, prefix="/api", tags=["submissions"])
 app.include_router(rubric.router, prefix="/api", tags=["rubric"])
@@ -44,9 +60,6 @@ app.include_router(behavioral_rule_groups.router, prefix="/api", tags=["behavior
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 1:
-        print("Usage: python main.py <folder path>")
-        sys.exit(1)
     if len(sys.argv) < 2:
         print("Error: Please provide a folder path")
         print("Usage: python main.py <folder path>")
@@ -59,15 +72,7 @@ if __name__ == "__main__":
         print("Usage: python main.py <folder path>")
         sys.exit(1)
 
-    # Load checks during startup
-    try:
-        checks.manager.load_checks()
-    except Exception as e:
-        print(f"Could not load checks: {e}")
-        sys.exit(1)
-
-    # Initialize app state
+    # Set base_path before lifespan runs
     app.state.base_path = base_path
-    app.state.rubric = get_rubric_from_disk(base_path)
 
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -1,12 +1,13 @@
 import os
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
-import checks.manager
 import rules.manager
 from checks import Check, CheckComplexity, CheckFormInput
 from checks.implementations.behavioral import BehavioralRuleCheck, WorkflowData, BehavioralGroupEvaluator
+from checks.manager import CheckRegistry
+from dependencies import get_check_registry
 from rubric import Rubric, RubricCriterion
 
 router = APIRouter()
@@ -25,13 +26,12 @@ class Node(BaseModel):
 
 
 @router.get("/checks")
-async def list_checks() -> list[dict[str, str | list[CheckFormInput]]]:
-    manager = checks.manager.get_manager("")
-    return manager.list_checks()
+async def list_checks(registry: CheckRegistry = Depends(get_check_registry)) -> list[dict[str, str | list[CheckFormInput]]]:
+    return registry.list_checks()
 
 
 @router.post("/checks/analyze", response_model=None)
-async def analyze_submission(filename: str, request: Request) -> Response | Rubric:
+async def analyze_submission(filename: str, request: Request, registry: CheckRegistry = Depends(get_check_registry)) -> Response | Rubric:
     base_path = request.app.state.base_path
     rubric = request.app.state.rubric
 
@@ -54,7 +54,7 @@ async def analyze_submission(filename: str, request: Request) -> Response | Rubr
     with open(submission, encoding="utf-8") as f:
         model_xml = f.read()
 
-    manager = checks.manager.get_manager(model_xml)
+    manager = registry.create_manager(model_xml)
 
     parsed_algorithms: list[RubricCriterion] = []
     for algorithm in rubric.criteria:
@@ -163,12 +163,12 @@ async def analyze_submission(filename: str, request: Request) -> Response | Rubr
 
 
 @router.post("/checks/analyze/all")
-async def analyze_all(req: Request) -> list[Node]:
+async def analyze_all(req: Request, registry: CheckRegistry = Depends(get_check_registry)) -> list[Node]:
     model_xml = await req.body()
     if not model_xml:
         raise HTTPException(status_code=400, detail="request body is missing")
 
-    manager = checks.manager.get_manager(model_xml.decode())
+    manager = registry.create_manager(model_xml.decode())
     available_checks = manager.list_checks()
 
     applicable_checks: dict[str, list[Check]] = {}

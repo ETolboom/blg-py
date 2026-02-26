@@ -1,12 +1,13 @@
 import asyncio
 import os
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-import checks.manager
 import rules.manager
 from checks import CheckComplexity, CheckFormInput, CheckInputType, CheckResult
 from checks.implementations.behavioral import WorkflowData, BehavioralRuleCheck
+from checks.manager import CheckRegistry
+from dependencies import get_check_registry
 from rubric import OnboardingRubric, Rubric, RubricCriterion
 from rules.manager import BehavioralRule
 
@@ -22,7 +23,7 @@ async def get_current_rubric(request: Request) -> Rubric:
 
 
 @router.post("/rubric")
-async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric, request: Request) -> Rubric:
+async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric, request: Request, registry: CheckRegistry = Depends(get_check_registry)) -> Rubric:
     base_path = request.app.state.base_path
 
     ref_xml = (
@@ -30,7 +31,7 @@ async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric, request:
         if onboarding_rubric.assignment and onboarding_rubric.assignment.reference_xml
         else ""
     )
-    manager = checks.manager.get_manager(ref_xml)
+    manager = registry.create_manager(ref_xml)
 
     parsed_algorithms = []
     if len(onboarding_rubric.checks) != 0:
@@ -150,7 +151,7 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: BehavioralRule, re
 
 @router.post("/rubric/criteria/{algorithm_id}")
 async def update_criteria(
-    algorithm_id: str, inputs: list[CheckFormInput], request: Request
+    algorithm_id: str, inputs: list[CheckFormInput], request: Request, registry: CheckRegistry = Depends(get_check_registry),
 ) -> Rubric:
     base_path = request.app.state.base_path
     rubric = request.app.state.rubric
@@ -169,9 +170,9 @@ async def update_criteria(
             del rubric.criteria[index]
 
         if rubric and rubric.assignment and rubric.assignment.reference_xml:
-            manager = checks.manager.get_manager(rubric.assignment.reference_xml)
+            manager = registry.create_manager(rubric.assignment.reference_xml)
         else:
-            manager = checks.manager.get_manager("")
+            manager = registry.create_manager("")
         result = manager.get_check(algorithm_id).analyze(inputs=inputs)
         rubric.criteria.append(
             RubricCriterion(
