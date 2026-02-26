@@ -6,7 +6,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    field_validator,
+    field_validator, ValidationInfo,
 )
 
 
@@ -59,16 +59,14 @@ class CheckFormInput(BaseModel):
 
     @classmethod
     @field_validator("data")
-    def _data_matches_declared_type(cls, v: Any, values: dict[str, Any]) -> Any:
-        expected_type = TYPE_MAP[values["input_type"]]
+    def _data_matches_declared_type(cls, v: Any, info: ValidationInfo) -> Any:
+        expected_type = TYPE_MAP[info.data["input_type"]]
         if not isinstance(v, expected_type):
             raise TypeError(f"Input data must be of type {expected_type.__name__}")
 
         match v:
             case str() if not v.strip():  # empty string
                 raise ValueError("String input must not be empty")
-            case int() if v is None:  # number is null
-                raise ValueError("Integer input must not be null")
             case CheckKeyValueType() if not v.pairs:  # dict is empty
                 raise ValueError("Key-value input must contain at least one pair")
             case CheckSelectionType() if not v.accepted_values:
@@ -85,11 +83,11 @@ class CheckComplexity(str, Enum):
 class CheckResult(BaseModel):
     """This class describes the format in which the algorithm is presented."""
 
-    id: str = "algorithm_name"
-    name: str = "Algorithm X"
-    check_complexity: CheckComplexity = None
-    description: str = "This algorithm X checks for Y"
-    fulfilled: bool | None = False
+    id: str
+    name: str
+    check_complexity: CheckComplexity
+    description: str
+    fulfilled: bool
     confidence: float = 1.0
     problematic_elements: list[str] = []
     inputs: list[CheckFormInput] = []
