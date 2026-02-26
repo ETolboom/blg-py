@@ -15,8 +15,20 @@ class Assignment(BaseModel):
 
 
 class RubricCriterion(CheckResult):
-    custom_score: float | None
-    default_points: float
+    score: float | None = None
+    default_points: float = 1.0
+
+
+class SubmissionCriterionResult(BaseModel):
+    id: str
+    score: float | None = None
+    fulfilled: bool | None = None
+    confidence: float = 0.0
+    problematic_elements: list[str] = []
+
+
+class SubmissionResult(BaseModel):
+    criteria: list[SubmissionCriterionResult] = []
 
 
 class OnboardingRubric(BaseModel):
@@ -61,8 +73,8 @@ class Rubric(BaseModel):
         def calculate_points(criterion):
             if not criterion.fulfilled:
                 return 0.0
-            elif criterion.custom_score is not None:
-                return max(0.0, min(1.0, criterion.custom_score))
+            elif criterion.score is not None:
+                return max(0.0, min(1.0, criterion.score))
             else:
                 return max(0.0, min(1.0, criterion.default_points))
 

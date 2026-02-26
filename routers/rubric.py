@@ -49,7 +49,7 @@ async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric, request:
                     confidence=result.confidence,
                     problematic_elements=result.problematic_elements,
                     default_points=1.0,
-                    custom_score=None,
+                    score=None,
                 )
             )
 
@@ -65,6 +65,8 @@ async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric, request:
     # Write new rubric to file so it persists
     with open(os.path.join(base_path, "rubric.json"), "w") as f:
         f.write(new_rubric.model_dump_json())
+
+    request.app.state.submission_service.invalidate_all_results()
 
     return new_rubric
 
@@ -127,7 +129,7 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: BehavioralRule, re
                 confidence=1.0,
                 problematic_elements=[],
                 default_points=inputs.maxPoints,
-                custom_score=None,
+                score=None,
             )
         )
 
@@ -138,6 +140,8 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: BehavioralRule, re
         # Write new rubric to file so it persists
         with open(os.path.join(base_path, "rubric.json"), "w") as f:
             f.write(rubric.model_dump_json())
+
+        request.app.state.submission_service.invalidate_all_results()
 
         return rubric
     except HTTPException:
@@ -184,7 +188,7 @@ async def update_criteria(
                 confidence=result.confidence,
                 problematic_elements=result.problematic_elements,
                 default_points=1.0,
-                custom_score=None,
+                score=None,
             )
         )
 
@@ -195,6 +199,8 @@ async def update_criteria(
         # Write new rubric to file so it persists
         with open(os.path.join(base_path, "rubric.json"), "w") as f:
             f.write(rubric.model_dump_json())
+
+        request.app.state.submission_service.invalidate_all_results()
 
         return rubric
     except Exception as e:
@@ -223,6 +229,8 @@ async def update_rubric_description(req: Request) -> None:
 
     with open(os.path.join(base_path, "rubric.json"), "w") as f:
         f.write(rubric.model_dump_json())
+
+    req.app.state.submission_service.invalidate_all_results()
 
 
 @router.delete("/rubric/criteria/{criterion_id}")
@@ -258,6 +266,8 @@ async def delete_rubric_criterion(criterion_id: str, request: Request, rule_mana
             with open(os.path.join(base_path, "rubric.json"), "w") as f:
                 f.write(rubric.model_dump_json())
 
+            request.app.state.submission_service.invalidate_all_results()
+
             return {
                 "message": f"Criterion '{criterion_id}' deleted successfully",
                 "unmerged_templates": []
@@ -289,6 +299,8 @@ async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: st
 
         with open(os.path.join(base_path, "rubric.json"), "w") as f:
             f.write(rubric.model_dump_json())
+
+        request.app.state.submission_service.invalidate_all_results()
 
         return {
             "message": f"Group criterion '{criterion_id}' deleted (group file not found)",
@@ -334,7 +346,7 @@ async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: st
                 confidence=1.0,
                 problematic_elements=[],
                 default_points=template.maxPoints,
-                custom_score=None,
+                score=None,
             )
         )
 
@@ -352,6 +364,8 @@ async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: st
     # Save rubric
     with open(os.path.join(base_path, "rubric.json"), "w") as f:
         f.write(rubric.model_dump_json())
+
+    request.app.state.submission_service.invalidate_all_results()
 
     result = {
         "message": f"Group '{criterion_id}' deleted and unmerged",

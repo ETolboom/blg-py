@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Response, UploadFile
 
 from dependencies import get_submission_service
-from rubric import RubricCriterion
+from rubric import SubmissionCriterionResult
 from services.submissions import SubmissionService
 
 router = APIRouter()
@@ -47,5 +47,5 @@ async def get_submission(filename: str, service: SubmissionService = Depends(get
 
 
 @router.patch("/submissions/{filename}")
-async def update_submission(filename: str, criteria: list[RubricCriterion], service: SubmissionService = Depends(get_submission_service)) -> None:
+async def update_submission(filename: str, criteria: list[SubmissionCriterionResult], service: SubmissionService = Depends(get_submission_service)) -> None:
     service.update_submission_criteria(filename, criteria)

@@ -164,9 +164,9 @@ async def validate_rule(rule_id: str, request: Request, rule_manager: Behavioral
             rubric.criteria[criterion_index].problematic_elements = problematic_elements
 
             if round(earned_points, 2) != round(rule.maxPoints, 2):
-                rubric.criteria[criterion_index].custom_score = earned_points
+                rubric.criteria[criterion_index].score = earned_points
             else:
-                rubric.criteria[criterion_index].custom_score = None
+                rubric.criteria[criterion_index].score = None
 
         affected_groups = []
         all_groups = rule_manager.list_groups()
@@ -197,9 +197,9 @@ async def validate_rule(rule_id: str, request: Request, rule_manager: Behavioral
                         rubric.criteria[group_criterion_index].problematic_elements = group_result.problematic_elements
 
                         if round(group_result.earned_points, 2) != group.maxPoints:
-                            rubric.criteria[group_criterion_index].custom_score = group_result.earned_points
+                            rubric.criteria[group_criterion_index].score = group_result.earned_points
                         else:
-                            rubric.criteria[group_criterion_index].custom_score = None
+                            rubric.criteria[group_criterion_index].score = None
 
                         affected_groups.append({
                             "group_id": group.group_id,
@@ -216,6 +216,8 @@ async def validate_rule(rule_id: str, request: Request, rule_manager: Behavioral
 
             with open(os.path.join(base_path, "rubric.json"), "w") as f:
                 f.write(rubric.model_dump_json())
+
+            request.app.state.submission_service.invalidate_all_results()
 
         # Return validation results (including affected groups)
         return {

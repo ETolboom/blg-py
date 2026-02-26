@@ -187,7 +187,7 @@ async def add_behavioral_group_to_rubric(group_id: str, group: BehavioralRuleGro
                 confidence=1.0,
                 problematic_elements=[],
                 default_points=group.maxPoints or 0.0,
-                custom_score=None,
+                score=None,
             )
         )
 
@@ -205,7 +205,7 @@ async def add_behavioral_group_to_rubric(group_id: str, group: BehavioralRuleGro
                 rubric.criteria[criterion_index].problematic_elements = result.problematic_elements
                 earned = result.earned_points
                 if round(earned, 2) != round(group.maxPoints or 0.0, 2):
-                    rubric.criteria[criterion_index].custom_score = earned
+                    rubric.criteria[criterion_index].score = earned
 
             # Persist evaluation results into the group file
             rule_manager.update_group_evaluation(group.group_id, result)
@@ -217,6 +217,8 @@ async def add_behavioral_group_to_rubric(group_id: str, group: BehavioralRuleGro
         # Persist rubric
         with open(os.path.join(base_path, "rubric.json"), "w") as f:
             f.write(rubric.model_dump_json())
+
+        request.app.state.submission_service.invalidate_all_results()
 
         return rubric
     except HTTPException:

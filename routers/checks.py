@@ -1,14 +1,15 @@
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from checks import Check, CheckComplexity, CheckFormInput
 from checks.implementations.behavioral import BehavioralRuleCheck, WorkflowData, BehavioralGroupEvaluator
 from checks.manager import CheckRegistry
-from dependencies import get_check_registry, get_rule_manager
-from rubric import Rubric, RubricCriterion
+from dependencies import get_check_registry, get_rule_manager, get_submission_service
+from rubric import Rubric, RubricCriterion, SubmissionCriterionResult, SubmissionResult
 from rules.manager import BehavioralRuleManager
+from services.submissions import SubmissionService
 
 router = APIRouter()
 
@@ -31,8 +32,13 @@ async def list_checks(registry: CheckRegistry = Depends(get_check_registry)) -> 
 
 
 @router.post("/checks/analyze", response_model=None)
-async def analyze_submission(filename: str, request: Request, registry: CheckRegistry = Depends(get_check_registry), rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> Response | Rubric:
-    base_path = request.app.state.base_path
+async def analyze_submission(
+    filename: str,
+    request: Request,
+    registry: CheckRegistry = Depends(get_check_registry),
+    rule_manager: BehavioralRuleManager = Depends(get_rule_manager),
+    submission_service: SubmissionService = Depends(get_submission_service),
+) -> Rubric:
     rubric = request.app.state.rubric
 
     if filename == "":
@@ -41,12 +47,11 @@ async def analyze_submission(filename: str, request: Request, registry: CheckReg
     if filename == "Reference":
         return rubric
 
-    submission = os.path.join(base_path, "submissions", filename)
+    submission = os.path.join(request.app.state.base_path, "submissions", filename)
 
     if os.path.exists(submission + ".json"):
-        # We already have an analyzed result
-        with open(submission + ".json") as file:
-            return Response(content=file.read(), media_type="application/json")
+        # We already have an analyzed result — compose from reference rubric
+        return submission_service.compose_rubric(filename)
 
     if not os.path.exists(submission):
         raise HTTPException(status_code=404, detail="Submission not found")
@@ -56,18 +61,15 @@ async def analyze_submission(filename: str, request: Request, registry: CheckReg
 
     manager = registry.create_manager(model_xml)
 
-    parsed_algorithms: list[RubricCriterion] = []
+    criterion_results: list[SubmissionCriterionResult] = []
     for algorithm in rubric.criteria:
         # Check if this is a behavioral (template-based) criterion
         if algorithm.check_complexity == CheckComplexity.COMPLEX:
-            # This is a behavioral criterion - detect if it's a GROUP or INDIVIDUAL TEMPLATE
             criterion_id = algorithm.id
 
-            # Check if this is a group (prefixed with "group:")
             if criterion_id.startswith("group:"):
                 # === GROUP EVALUATION ===
-                # Strip the "group:" prefix to get the actual group_id
-                group_id = criterion_id[6:]  # Remove "group:" prefix
+                group_id = criterion_id[6:]
                 group = rule_manager.get_group(group_id)
 
                 if group is None:
@@ -82,22 +84,17 @@ async def analyze_submission(filename: str, request: Request, registry: CheckReg
                 # Save evaluation results to group file
                 rule_manager.update_group_evaluation(group_id, result)
 
-                parsed_algorithms.append(
-                    RubricCriterion(
-                        id=criterion_id,  # Keep the "group:" prefix in the result
-                        name=group.name,
-                        description=group.description,
-                        check_complexity=CheckComplexity.COMPLEX,
+                criterion_results.append(
+                    SubmissionCriterionResult(
+                        id=criterion_id,
                         fulfilled=result.fulfilled,
-                        inputs=algorithm.inputs,
                         confidence=result.overall_confidence,
                         problematic_elements=result.problematic_elements,
-                        default_points=group.maxPoints,
-                        custom_score=result.earned_points if round(result.earned_points, 2) != group.maxPoints else None,
+                        score=result.earned_points if round(result.earned_points, 2) != group.maxPoints else None,
                     )
                 )
             else:
-                # === INDIVIDUAL RULE EVALUATION (existing logic) ===
+                # === INDIVIDUAL RULE EVALUATION ===
                 rule = rule_manager.get_rule(criterion_id)
 
                 if rule is None:
@@ -106,59 +103,74 @@ async def analyze_submission(filename: str, request: Request, registry: CheckReg
                         detail=f"Rule or group '{criterion_id}' not found on disk but referenced in rubric"
                     )
 
-                # Run behavioral analysis
                 workflow_data = WorkflowData(nodes=rule.nodes, edges=rule.edges)
                 checker = BehavioralRuleCheck(model_xml=model_xml)
                 result = checker.check_behavior(workflow=workflow_data)
 
-                # Collect problematic elements
                 problematic_elements = []
                 for match in result.match_details:
                     if not match.is_correct or not match.is_ideal_match or not match.is_ideal_distance:
                         if match.bpmn_element_id not in problematic_elements:
                             problematic_elements.append(match.bpmn_element_id)
 
-                parsed_algorithms.append(
-                    RubricCriterion(
+                criterion_results.append(
+                    SubmissionCriterionResult(
                         id=criterion_id,
-                        name=rule.name,
-                        description=rule.description,
-                        check_complexity=CheckComplexity.COMPLEX,
                         fulfilled=result.earned_points > 0,
-                        inputs=algorithm.inputs,  # Keep template_id reference
                         confidence=result.confidence,
                         problematic_elements=problematic_elements,
-                        default_points=rule.maxPoints,
-                        custom_score=result.earned_points if round(result.earned_points, 2) != rule.maxPoints else None,
+                        score=result.earned_points if round(result.earned_points, 2) != rule.maxPoints else None,
                     )
                 )
         else:
-            # Standard check - use check manager
+            # Standard check
             result = manager.get_check(algorithm.id).analyze(inputs=algorithm.inputs)
-            parsed_algorithms.append(
-                RubricCriterion(
+            criterion_results.append(
+                SubmissionCriterionResult(
                     id=result.id,
-                    name=result.name,
-                    description=result.description,
-                    check_complexity=result.check_complexity,
                     fulfilled=result.fulfilled,
-                    inputs=result.inputs,
                     confidence=result.confidence,
                     problematic_elements=result.problematic_elements,
-                    default_points=1.0,
-                    custom_score=None,
+                    score=None,
                 )
             )
 
-    parsed_submission = Rubric(
-        criteria=parsed_algorithms,
-        assignment=None,
-    )
-
+    # Save lightweight delta to disk
+    submission_result = SubmissionResult(criteria=criterion_results)
     with open(submission + ".json", "w") as f:
-        f.write(parsed_submission.model_dump_json())
+        f.write(submission_result.model_dump_json())
 
-    return parsed_submission
+    # Build composed Rubric from reference metadata + fresh results
+    result_map = {cr.id: cr for cr in criterion_results}
+    composed: list[RubricCriterion] = []
+    for ref in rubric.criteria:
+        sr = result_map.get(ref.id)
+        if sr is not None:
+            composed.append(RubricCriterion(
+                id=ref.id,
+                name=ref.name,
+                description=ref.description,
+                check_complexity=ref.check_complexity,
+                inputs=ref.inputs,
+                default_points=ref.default_points,
+                fulfilled=sr.fulfilled,
+                score=sr.score,
+                confidence=sr.confidence,
+                problematic_elements=sr.problematic_elements,
+            ))
+        else:
+            composed.append(RubricCriterion(
+                id=ref.id,
+                name=ref.name,
+                description=ref.description,
+                check_complexity=ref.check_complexity,
+                inputs=ref.inputs,
+                default_points=ref.default_points,
+                fulfilled=None,
+                score=None,
+            ))
+
+    return Rubric(criteria=composed, assignment=None)
 
 
 @router.post("/checks/analyze/all")
