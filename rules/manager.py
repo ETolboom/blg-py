@@ -368,15 +368,3 @@ class BehavioralRuleManager:
 
         # Save to disk
         return self.save_group(group)
-
-
-# Global manager instance
-_manager: Optional[BehavioralRuleManager] = None
-
-
-def get_manager(rules_dir: str = "example/rules") -> BehavioralRuleManager:
-    """Get or create the global template manager"""
-    global _manager
-    if _manager is None:
-        _manager = BehavioralRuleManager(rules_dir)
-    return _manager

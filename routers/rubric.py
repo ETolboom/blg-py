@@ -2,13 +2,12 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-import rules.manager
 from checks import CheckComplexity, CheckFormInput, CheckInputType, CheckResult
 from checks.implementations.behavioral import WorkflowData, BehavioralRuleCheck
 from checks.manager import CheckRegistry
-from dependencies import get_check_registry
+from dependencies import get_check_registry, get_rule_manager
 from rubric import OnboardingRubric, Rubric, RubricCriterion
-from rules.manager import BehavioralRule
+from rules.manager import BehavioralRule, BehavioralRuleManager
 
 router = APIRouter()
 
@@ -82,12 +81,11 @@ def analyze_behavioral_criteria(data: WorkflowData, request: Request) -> CheckRe
 
 
 @router.post("/rubric/criteria/behavioral/{behavioral_id}")
-async def add_behavioral_criteria(behavioral_id: str, inputs: BehavioralRule, request: Request) -> Rubric:
+async def add_behavioral_criteria(behavioral_id: str, inputs: BehavioralRule, request: Request, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> Rubric:
     base_path = request.app.state.base_path
     rubric = request.app.state.rubric
 
     try:
-        rule_manager = rules.manager.get_manager()
 
         # If no nodes/edges provided, try loading existing rule or seeding from template
         if len(inputs.nodes) == 0 and len(inputs.edges) == 0:
@@ -228,7 +226,7 @@ async def update_rubric_description(req: Request) -> None:
 
 
 @router.delete("/rubric/criteria/{criterion_id}")
-async def delete_rubric_criterion(criterion_id: str, request: Request) -> dict:
+async def delete_rubric_criterion(criterion_id: str, request: Request, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> dict:
     base_path = request.app.state.base_path
     rubric = request.app.state.rubric
 
@@ -248,7 +246,7 @@ async def delete_rubric_criterion(criterion_id: str, request: Request) -> dict:
 
         # Check if group (needs unmerge) or individual template (simple delete)
         if criterion_id.startswith("group:"):
-            return await _unmerge_and_delete_group(criterion_id, index, base_path, rubric, request)
+            return await _unmerge_and_delete_group(criterion_id, index, base_path, rubric, request, rule_manager)
         else:
             # Simple deletion for individual templates
             del rubric.criteria[index]
@@ -274,13 +272,12 @@ async def delete_rubric_criterion(criterion_id: str, request: Request) -> dict:
         )
 
 
-async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: str, rubric: Rubric, request: Request) -> dict:
+async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: str, rubric: Rubric, request: Request, rule_manager: BehavioralRuleManager) -> dict:
     # Extract group_id (remove "group:" prefix)
     group_id = criterion_id[6:]
 
     # Load group from disk
-    template_manager = rules.manager.get_manager()
-    group = template_manager.get_group(group_id)
+    group = rule_manager.get_group(group_id)
 
     if group is None:
         # Group file not found - cleanup orphaned reference
@@ -305,7 +302,7 @@ async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: st
     insert_position = index  # Insert where the group was
 
     for template_id in group.rule_ids:
-        template = template_manager.get_rule(template_id)
+        template = rule_manager.get_rule(template_id)
 
         if template is None:
             missing.append(template_id)

@@ -1,31 +1,29 @@
 import os
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-import rules.manager
 from checks import CheckComplexity, CheckFormInput, CheckInputType
 from checks.implementations.behavioral import BehavioralGroupEvaluator, GroupEvaluationResult
+from dependencies import get_rule_manager
 from rubric import RubricCriterion
-from rules.manager import BehavioralRuleGroup
+from rules.manager import BehavioralRuleGroup, BehavioralRuleManager
 
 router = APIRouter()
 
 
 @router.get("/behavioral-rule-groups")
-async def list_rule_groups() -> list[dict]:
+async def list_rule_groups(rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> list[dict]:
     """List all available template groups"""
     try:
-        template_manager = rules.manager.get_manager()
-        return template_manager.list_groups()
+        return rule_manager.list_groups()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list groups: {str(e)}")
 
 
 @router.get("/behavioral-rule-groups/{group_id}")
-async def get_rule_group(group_id: str) -> BehavioralRuleGroup:
+async def get_rule_group(group_id: str, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> BehavioralRuleGroup:
     """Get specific template group"""
     try:
-        rule_manager = rules.manager.get_manager()
         group = rule_manager.get_group(group_id)
         if group is None:
             raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
@@ -37,11 +35,9 @@ async def get_rule_group(group_id: str) -> BehavioralRuleGroup:
 
 
 @router.post("/behavioral-rule-groups")
-async def create_rule_group(group: BehavioralRuleGroup, request: Request) -> BehavioralRuleGroup:
+async def create_rule_group(group: BehavioralRuleGroup, request: Request, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> BehavioralRuleGroup:
     """Create new template group and auto-evaluate it if a reference model is loaded"""
     try:
-        rule_manager = rules.manager.get_manager()
-
         # Check if group already exists
         if rule_manager.group_exists(group.group_id):
             raise HTTPException(
@@ -56,7 +52,7 @@ async def create_rule_group(group: BehavioralRuleGroup, request: Request) -> Beh
         # Auto-evaluate if a reference model is available
         rubric = request.app.state.rubric
         if rubric and rubric.assignment and rubric.assignment.reference_xml:
-            evaluator = BehavioralGroupEvaluator(model_xml=rubric.assignment.reference_xml)
+            evaluator = BehavioralGroupEvaluator(model_xml=rubric.assignment.reference_xml, rule_manager=rule_manager)
             result = evaluator.evaluate_group(saved_group)
             saved_group = rule_manager.update_group_evaluation(saved_group.group_id, result)
 
@@ -70,7 +66,7 @@ async def create_rule_group(group: BehavioralRuleGroup, request: Request) -> Beh
 
 
 @router.put("/behavioral-rule-groups/{group_id}")
-async def update_template_group(group_id: str, group: BehavioralRuleGroup) -> BehavioralRuleGroup:
+async def update_template_group(group_id: str, group: BehavioralRuleGroup, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> BehavioralRuleGroup:
     """Update existing template group"""
     try:
         # Ensure group_id matches
@@ -79,8 +75,6 @@ async def update_template_group(group_id: str, group: BehavioralRuleGroup) -> Be
                 status_code=400,
                 detail=f"Group ID in URL ('{group_id}') doesn't match ID in body ('{group.group_id}')"
             )
-
-        rule_manager = rules.manager.get_manager()
 
         # Check if group exists
         if not rule_manager.group_exists(group_id):
@@ -101,10 +95,9 @@ async def update_template_group(group_id: str, group: BehavioralRuleGroup) -> Be
 
 
 @router.delete("/behavioral-rule-groups/{group_id}")
-async def delete_rule_group(group_id: str) -> dict:
+async def delete_rule_group(group_id: str, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> dict:
     """Delete template group"""
     try:
-        rule_manager = rules.manager.get_manager()
         success = rule_manager.delete_group(group_id)
         if not success:
             raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
@@ -116,7 +109,7 @@ async def delete_rule_group(group_id: str) -> dict:
 
 
 @router.post("/rubric/criteria/behavioral-group/analyze")
-def analyze_behavioral_group(group: BehavioralRuleGroup, request: Request) -> GroupEvaluationResult:
+def analyze_behavioral_group(group: BehavioralRuleGroup, request: Request, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> GroupEvaluationResult:
     """
     Test evaluate a template group against reference model.
     Results are automatically saved to the group's JSON file.
@@ -128,13 +121,12 @@ def analyze_behavioral_group(group: BehavioralRuleGroup, request: Request) -> Gr
             raise HTTPException(status_code=400, detail="No reference model loaded")
 
         # Evaluate the group
-        evaluator = BehavioralGroupEvaluator(model_xml=rubric.assignment.reference_xml)
+        evaluator = BehavioralGroupEvaluator(model_xml=rubric.assignment.reference_xml, rule_manager=rule_manager)
         result = evaluator.evaluate_group(group)
 
         # Save evaluation results to the group file (if it exists on disk)
-        template_manager = rules.manager.get_manager()
-        if template_manager.group_exists(group.group_id):
-            template_manager.update_group_evaluation(group.group_id, result)
+        if rule_manager.group_exists(group.group_id):
+            rule_manager.update_group_evaluation(group.group_id, result)
 
         return result
     except HTTPException:
@@ -144,7 +136,7 @@ def analyze_behavioral_group(group: BehavioralRuleGroup, request: Request) -> Gr
 
 
 @router.post("/rubric/criteria/behavioral-group/{group_id}")
-async def add_behavioral_group_to_rubric(group_id: str, group: BehavioralRuleGroup, request: Request):
+async def add_behavioral_group_to_rubric(group_id: str, group: BehavioralRuleGroup, request: Request, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)):
     """Add template group as rubric criterion"""
     base_path = request.app.state.base_path
     rubric = request.app.state.rubric
@@ -158,7 +150,6 @@ async def add_behavioral_group_to_rubric(group_id: str, group: BehavioralRuleGro
             )
 
         # Save group to disk first
-        rule_manager = rules.manager.get_manager()
         rule_manager.validate_group_rules(group)
         rule_manager.save_group(group)
 
@@ -202,7 +193,7 @@ async def add_behavioral_group_to_rubric(group_id: str, group: BehavioralRuleGro
 
         # Auto-evaluate the group and overwrite the placeholder criterion values
         if rubric.assignment and rubric.assignment.reference_xml:
-            evaluator = BehavioralGroupEvaluator(model_xml=rubric.assignment.reference_xml)
+            evaluator = BehavioralGroupEvaluator(model_xml=rubric.assignment.reference_xml, rule_manager=rule_manager)
             result = evaluator.evaluate_group(group)
 
             criterion_index = next(
@@ -221,6 +212,7 @@ async def add_behavioral_group_to_rubric(group_id: str, group: BehavioralRuleGro
 
         # Update app state
         request.app.state.rubric = rubric
+        request.app.state.submission_service.rubric = rubric
 
         # Persist rubric
         with open(os.path.join(base_path, "rubric.json"), "w") as f:

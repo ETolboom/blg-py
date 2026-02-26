@@ -12,6 +12,7 @@ from routers import submissions, rubric
 from routers import checks as checks_router
 from routers import behavioral_rules, behavioral_rule_groups
 from rubric import Rubric
+from rules.manager import BehavioralRuleManager
 from services.submissions import SubmissionService
 
 
@@ -46,6 +47,9 @@ async def lifespan(app: FastAPI):
 
     # Load rubric from disk
     app.state.rubric = get_rubric_from_disk(base_path)
+
+    # Initialize rule manager
+    app.state.rule_manager = BehavioralRuleManager()
 
     # Initialize submission service
     app.state.submission_service = SubmissionService(base_path, app.state.rubric)

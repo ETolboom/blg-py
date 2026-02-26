@@ -825,8 +825,9 @@ class BehavioralRuleCheck(Check):
 class BehavioralGroupEvaluator:
     """Evaluates template groups with XOR/AND conditions and MAX scoring"""
 
-    def __init__(self, model_xml: str):
+    def __init__(self, model_xml: str, rule_manager):
         self.model_xml = model_xml
+        self.rule_manager = rule_manager
 
     def evaluate_group(self, group) -> GroupEvaluationResult:
         """
@@ -839,14 +840,11 @@ class BehavioralGroupEvaluator:
         4. Apply aggregation based on condition (XOR/AND)
         5. Return GroupEvaluationResult with MAX score
         """
-        import rules.manager
-
-        template_manager = rules.manager.get_manager()
         checker = BehavioralRuleCheck(model_xml=self.model_xml)
 
         rule_results = []
         for rule_id in group.rule_ids:
-            rule = template_manager.get_rule(rule_id)
+            rule = self.rule_manager.get_rule(rule_id)
             if rule is None:
                 # Rule not found, treat as failed
                 rule_results.append(RuleEvaluationResult(

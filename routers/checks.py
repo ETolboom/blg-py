@@ -3,12 +3,12 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
-import rules.manager
 from checks import Check, CheckComplexity, CheckFormInput
 from checks.implementations.behavioral import BehavioralRuleCheck, WorkflowData, BehavioralGroupEvaluator
 from checks.manager import CheckRegistry
-from dependencies import get_check_registry
+from dependencies import get_check_registry, get_rule_manager
 from rubric import Rubric, RubricCriterion
+from rules.manager import BehavioralRuleManager
 
 router = APIRouter()
 
@@ -31,7 +31,7 @@ async def list_checks(registry: CheckRegistry = Depends(get_check_registry)) -> 
 
 
 @router.post("/checks/analyze", response_model=None)
-async def analyze_submission(filename: str, request: Request, registry: CheckRegistry = Depends(get_check_registry)) -> Response | Rubric:
+async def analyze_submission(filename: str, request: Request, registry: CheckRegistry = Depends(get_check_registry), rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> Response | Rubric:
     base_path = request.app.state.base_path
     rubric = request.app.state.rubric
 
@@ -62,14 +62,13 @@ async def analyze_submission(filename: str, request: Request, registry: CheckReg
         if algorithm.check_complexity == CheckComplexity.COMPLEX:
             # This is a behavioral criterion - detect if it's a GROUP or INDIVIDUAL TEMPLATE
             criterion_id = algorithm.id
-            template_manager = rules.manager.get_manager()
 
             # Check if this is a group (prefixed with "group:")
             if criterion_id.startswith("group:"):
                 # === GROUP EVALUATION ===
                 # Strip the "group:" prefix to get the actual group_id
                 group_id = criterion_id[6:]  # Remove "group:" prefix
-                group = template_manager.get_group(group_id)
+                group = rule_manager.get_group(group_id)
 
                 if group is None:
                     raise HTTPException(
@@ -77,11 +76,11 @@ async def analyze_submission(filename: str, request: Request, registry: CheckReg
                         detail=f"Group '{group_id}' not found on disk but referenced in rubric"
                     )
 
-                evaluator = BehavioralGroupEvaluator(model_xml=model_xml)
+                evaluator = BehavioralGroupEvaluator(model_xml=model_xml, rule_manager=rule_manager)
                 result = evaluator.evaluate_group(group)
 
                 # Save evaluation results to group file
-                template_manager.update_group_evaluation(group_id, result)
+                rule_manager.update_group_evaluation(group_id, result)
 
                 parsed_algorithms.append(
                     RubricCriterion(
@@ -99,7 +98,7 @@ async def analyze_submission(filename: str, request: Request, registry: CheckReg
                 )
             else:
                 # === INDIVIDUAL RULE EVALUATION (existing logic) ===
-                rule = template_manager.get_rule(criterion_id)
+                rule = rule_manager.get_rule(criterion_id)
 
                 if rule is None:
                     raise HTTPException(

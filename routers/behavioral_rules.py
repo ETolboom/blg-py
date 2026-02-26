@@ -1,39 +1,36 @@
 import os
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-import rules.manager
 from checks.implementations.behavioral import WorkflowData, BehavioralRuleCheck, BehavioralGroupEvaluator
-from rules.manager import BehavioralRule
+from dependencies import get_rule_manager
+from rules.manager import BehavioralRule, BehavioralRuleManager
 
 router = APIRouter()
 
 
 @router.get("/behavioral-rule-templates")
-async def get_templates() -> list[dict]:
+async def get_templates(rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> list[dict]:
     """List all available rule templates"""
     try:
-        rule_manager = rules.manager.get_manager()
         return rule_manager.list_templates()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list templates: {str(e)}")
 
 
 @router.get("/behavioral-rules")
-async def get_rules() -> list[dict]:
+async def get_rules(rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> list[dict]:
     """List all available rules"""
     try:
-        rule_manager = rules.manager.get_manager()
         return rule_manager.list_rules()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list rules: {str(e)}")
 
 
 @router.get("/behavioral-rules/{rule_id}")
-async def get_rule(rule_id: str) -> BehavioralRule:
+async def get_rule(rule_id: str, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> BehavioralRule:
     """Get a specific rule by ID"""
     try:
-        rule_manager = rules.manager.get_manager()
         rule = rule_manager.get_rule(rule_id)
 
         if rule is None:
@@ -47,11 +44,9 @@ async def get_rule(rule_id: str) -> BehavioralRule:
 
 
 @router.post("/behavioral-rules")
-async def create_rule(rule: BehavioralRule) -> BehavioralRule:
+async def create_rule(rule: BehavioralRule, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> BehavioralRule:
     """Create a new rule rule"""
     try:
-        rule_manager = rules.manager.get_manager()
-
         # Check if rule already exists
         if rule_manager.rule_exists(rule.id):
             raise HTTPException(
@@ -67,11 +62,9 @@ async def create_rule(rule: BehavioralRule) -> BehavioralRule:
 
 
 @router.put("/behavioral-rules/{rule_id}")
-async def update_rule(rule_id: str, rule: BehavioralRule) -> BehavioralRule:
+async def update_rule(rule_id: str, rule: BehavioralRule, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> BehavioralRule:
     """Update an existing rule rule"""
     try:
-        rule_manager = rules.manager.get_manager()
-
         # Ensure the rule ID in the URL matches the one in the body
         if rule.id != rule_id:
             raise HTTPException(
@@ -94,11 +87,9 @@ async def update_rule(rule_id: str, rule: BehavioralRule) -> BehavioralRule:
 
 
 @router.delete("/behavioral-rules/{rule_id}")
-async def delete_rule(rule_id: str) -> dict:
+async def delete_rule(rule_id: str, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> dict:
     """Delete a rule rule"""
     try:
-        rule_manager = rules.manager.get_manager()
-
         if not rule_manager.delete_rule(rule_id):
             raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")
 
@@ -110,7 +101,7 @@ async def delete_rule(rule_id: str) -> dict:
 
 
 @router.post("/behavioral-rules/{rule_id}/validate")
-async def validate_rule(rule_id: str, request: Request) -> dict:
+async def validate_rule(rule_id: str, request: Request, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> dict:
     """
     Validate a behavioral rule against the current rubric's reference BPMN.
     This runs the behavioral analysis and updates the rubric entry.
@@ -123,7 +114,6 @@ async def validate_rule(rule_id: str, request: Request) -> dict:
 
     try:
         # Get the rule
-        rule_manager = rules.manager.get_manager()
         rule = rule_manager.get_rule(rule_id)
 
         if rule is None:
@@ -187,7 +177,7 @@ async def validate_rule(rule_id: str, request: Request) -> dict:
                 group = rule_manager.get_group(group_info['group_id'])
                 if group is not None:
                     # Re-evaluate the group
-                    evaluator = BehavioralGroupEvaluator(model_xml=rubric.assignment.reference_xml)
+                    evaluator = BehavioralGroupEvaluator(model_xml=rubric.assignment.reference_xml, rule_manager=rule_manager)
                     group_result = evaluator.evaluate_group(group)
 
                     # Save evaluation results to group file
@@ -222,6 +212,7 @@ async def validate_rule(rule_id: str, request: Request) -> dict:
         if criterion_index != -1 or affected_groups:
             # Update app state
             request.app.state.rubric = rubric
+            request.app.state.submission_service.rubric = rubric
 
             with open(os.path.join(base_path, "rubric.json"), "w") as f:
                 f.write(rubric.model_dump_json())
