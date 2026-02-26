@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from collections import deque
 
 from checks import Check, CheckComplexity, CheckFormInput, CheckResult
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from bpmn.bpmn import Bpmn
 from bpmn.struct import PoolElement
@@ -132,7 +132,7 @@ class ConnectorNode(BaseModel):
     minimum_visit_count: int
 
     # Track which branches have visited this connector
-    visited_by_branches: set[str] = set()
+    visited_by_branches: set[str] = Field(default_factory=set)
 
     def register_visit(self, branch_id: str) -> bool:
         """Register a branch visit, return True if convergence complete"""
