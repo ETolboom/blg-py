@@ -1,3 +1,4 @@
+import functools
 import logging
 
 import torch
@@ -7,15 +8,16 @@ _model: SentenceTransformer | None = None
 
 logger = logging.getLogger(__name__)
 
+
 def load_model() -> None:
     """Load the sentence transformer model. Must be called before using similarity functions."""
     global _model
     if _model is None:
-        print("Loading sentence transformer model...")
+        logger.info("Loading sentence transformer model...")
         _model = SentenceTransformer(
             "sentence-transformers/all-mpnet-base-v2", cache_folder="./cache"
         )
-        print("Sentence transformer model loaded successfully")
+        logger.info("Sentence transformer model loaded successfully")
 
 
 def _get_model() -> SentenceTransformer:
@@ -27,8 +29,14 @@ def _get_model() -> SentenceTransformer:
     return _model
 
 
+@functools.lru_cache(maxsize=512)
+def _get_embedding(label: str) -> torch.Tensor:
+    """Return the cached normalized embedding for a single label string."""
+    return torch.tensor(_get_model().encode(label, normalize_embeddings=True))
+
+
 def _embed(labels: list[str]) -> torch.Tensor:
-    return torch.tensor(_get_model().encode(labels, normalize_embeddings=True))
+    return torch.stack([_get_embedding(label) for label in labels])
 
 
 def create_similarity_matrix(

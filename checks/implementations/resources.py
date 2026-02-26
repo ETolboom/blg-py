@@ -168,7 +168,7 @@ class PoolLaneCheck(Check):
                     matched_lane_ids.append(current_lane[submission_lane_idx].id)
 
                 missing_matches = set(
-                    [lane.id for lane in current_lane if lane.id is not None]
+                    [lane.id for lane in current_lane if lane.id]
                 ).difference(matched_lane_ids)
                 for missed_match in missing_matches:
                     missing_ids.append(missed_match)
