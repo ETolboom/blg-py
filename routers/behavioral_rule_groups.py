@@ -1,5 +1,4 @@
 import logging
-import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -7,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 from checks import CheckComplexity, CheckFormInput, CheckInputType
 from checks.implementations.behavioral import BehavioralGroupEvaluator, GroupEvaluationResult
-from dependencies import get_rule_manager
+from dependencies import get_rule_manager, save_rubric
 from rubric import RubricCriterion
 from rules.manager import BehavioralRuleGroup, BehavioralRuleManager
 
@@ -141,7 +140,6 @@ def analyze_behavioral_group(group: BehavioralRuleGroup, request: Request, rule_
 @router.post("/rubric/criteria/behavioral-group/{group_id}")
 async def add_behavioral_group_to_rubric(group_id: str, group: BehavioralRuleGroup, request: Request, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)):
     """Add template group as rubric criterion"""
-    base_path = request.app.state.base_path
     rubric = request.app.state.rubric
 
     try:
@@ -213,15 +211,7 @@ async def add_behavioral_group_to_rubric(group_id: str, group: BehavioralRuleGro
             # Persist evaluation results into the group file
             rule_manager.update_group_evaluation(group.group_id, result)
 
-        # Update app state
-        request.app.state.rubric = rubric
-        request.app.state.submission_service.rubric = rubric
-
-        # Persist rubric
-        with open(os.path.join(base_path, "rubric.json"), "w") as f:
-            f.write(rubric.to_disk_json())
-
-        request.app.state.submission_service.invalidate_all_results()
+        save_rubric(request, rubric)
 
         return rubric
     except HTTPException:

@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 from checks import CheckComplexity, CheckFormInput, CheckInputType, CheckResult
 from checks.implementations.behavioral import WorkflowData, BehavioralRuleCheck
 from checks.manager import CheckRegistry
-from dependencies import get_check_registry, get_rule_manager
+from dependencies import get_check_registry, get_rule_manager, save_rubric
 from rubric import OnboardingRubric, Rubric, RubricCriterion
 from rules.manager import BehavioralRule, BehavioralRuleManager
 
@@ -61,20 +61,12 @@ async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric, request:
         assignment=onboarding_rubric.assignment,
     )
 
-    # Update app state
-    request.app.state.rubric = new_rubric
-    request.app.state.submission_service.rubric = new_rubric
-
     # Write reference XML to separate file
     if ref_xml:
         with open(os.path.join(base_path, "reference.bpmn"), "w") as f:
             f.write(ref_xml)
 
-    # Write new rubric to file so it persists
-    with open(os.path.join(base_path, "rubric.json"), "w") as f:
-        f.write(new_rubric.to_disk_json())
-
-    request.app.state.submission_service.invalidate_all_results()
+    save_rubric(request, new_rubric)
 
     return new_rubric
 
@@ -92,7 +84,6 @@ def analyze_behavioral_criteria(data: WorkflowData, request: Request) -> CheckRe
 
 @router.post("/rubric/criteria/behavioral/{behavioral_id}")
 async def add_behavioral_criteria(behavioral_id: str, inputs: BehavioralRule, request: Request, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> Rubric:
-    base_path = request.app.state.base_path
     rubric = request.app.state.rubric
 
     try:
@@ -141,15 +132,7 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: BehavioralRule, re
             )
         )
 
-        # Update app state
-        request.app.state.rubric = rubric
-        request.app.state.submission_service.rubric = rubric
-
-        # Write new rubric to file so it persists
-        with open(os.path.join(base_path, "rubric.json"), "w") as f:
-            f.write(rubric.to_disk_json())
-
-        request.app.state.submission_service.invalidate_all_results()
+        save_rubric(request, rubric)
 
         return rubric
     except HTTPException:
@@ -164,7 +147,6 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: BehavioralRule, re
 async def update_criteria(
     algorithm_id: str, inputs: list[CheckFormInput], request: Request, registry: CheckRegistry = Depends(get_check_registry),
 ) -> Rubric:
-    base_path = request.app.state.base_path
     rubric = request.app.state.rubric
 
     try:
@@ -200,15 +182,7 @@ async def update_criteria(
             )
         )
 
-        # Update app state
-        request.app.state.rubric = rubric
-        request.app.state.submission_service.rubric = rubric
-
-        # Write new rubric to file so it persists
-        with open(os.path.join(base_path, "rubric.json"), "w") as f:
-            f.write(rubric.to_disk_json())
-
-        request.app.state.submission_service.invalidate_all_results()
+        save_rubric(request, rubric)
 
         return rubric
     except Exception as e:
@@ -219,7 +193,6 @@ async def update_criteria(
 
 @router.post("/rubric/description")
 async def update_rubric_description(req: Request) -> None:
-    base_path = req.app.state.base_path
     rubric = req.app.state.rubric
 
     description = await req.body()
@@ -231,19 +204,11 @@ async def update_rubric_description(req: Request) -> None:
     if rubric and rubric.assignment:
         rubric.assignment.description = description
 
-    # Update app state
-    req.app.state.rubric = rubric
-    req.app.state.submission_service.rubric = rubric
-
-    with open(os.path.join(base_path, "rubric.json"), "w") as f:
-        f.write(rubric.to_disk_json())
-
-    req.app.state.submission_service.invalidate_all_results()
+    save_rubric(req, rubric)
 
 
 @router.delete("/rubric/criteria/{criterion_id}")
 async def delete_rubric_criterion(criterion_id: str, request: Request, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> dict:
-    base_path = request.app.state.base_path
     rubric = request.app.state.rubric
 
     try:
@@ -262,19 +227,12 @@ async def delete_rubric_criterion(criterion_id: str, request: Request, rule_mana
 
         # Check if group (needs unmerge) or individual template (simple delete)
         if criterion_id.startswith("group:"):
-            return await _unmerge_and_delete_group(criterion_id, index, base_path, rubric, request, rule_manager)
+            return await _unmerge_and_delete_group(criterion_id, index, rubric, request, rule_manager)
         else:
             # Simple deletion for individual templates
             del rubric.criteria[index]
 
-            # Update app state
-            request.app.state.rubric = rubric
-            request.app.state.submission_service.rubric = rubric
-
-            with open(os.path.join(base_path, "rubric.json"), "w") as f:
-                f.write(rubric.to_disk_json())
-
-            request.app.state.submission_service.invalidate_all_results()
+            save_rubric(request, rubric)
 
             return {
                 "message": f"Criterion '{criterion_id}' deleted successfully",
@@ -290,7 +248,7 @@ async def delete_rubric_criterion(criterion_id: str, request: Request, rule_mana
         )
 
 
-async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: str, rubric: Rubric, request: Request, rule_manager: BehavioralRuleManager) -> dict:
+async def _unmerge_and_delete_group(criterion_id: str, index: int, rubric: Rubric, request: Request, rule_manager: BehavioralRuleManager) -> dict:
     # Extract group_id (remove "group:" prefix)
     group_id = criterion_id[6:]
 
@@ -301,14 +259,7 @@ async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: st
         # Group file not found - cleanup orphaned reference
         del rubric.criteria[index]
 
-        # Update app state
-        request.app.state.rubric = rubric
-        request.app.state.submission_service.rubric = rubric
-
-        with open(os.path.join(base_path, "rubric.json"), "w") as f:
-            f.write(rubric.to_disk_json())
-
-        request.app.state.submission_service.invalidate_all_results()
+        save_rubric(request, rubric)
 
         return {
             "message": f"Group criterion '{criterion_id}' deleted (group file not found)",
@@ -365,15 +316,7 @@ async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: st
     # Delete group criterion (now at insert_position due to insertions)
     del rubric.criteria[insert_position]
 
-    # Update app state
-    request.app.state.rubric = rubric
-    request.app.state.submission_service.rubric = rubric
-
-    # Save rubric
-    with open(os.path.join(base_path, "rubric.json"), "w") as f:
-        f.write(rubric.to_disk_json())
-
-    request.app.state.submission_service.invalidate_all_results()
+    save_rubric(request, rubric)
 
     result = {
         "message": f"Group '{criterion_id}' deleted and unmerged",
