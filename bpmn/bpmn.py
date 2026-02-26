@@ -589,7 +589,6 @@ class Bpmn:
                 # Element is abstract "task" or ServiceTask, SendTask, XYZTask, etc.
                 if (element.name == "task") or (element.label.endswith("Task")):
                     tasks.append(element.label)
-                continue
 
         return tasks
 

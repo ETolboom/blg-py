@@ -3,8 +3,6 @@ import logging
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Optional
-
 from pydantic import BaseModel, ValidationError, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
@@ -39,7 +37,7 @@ class BehavioralRule(BaseModel):
     id: str
     name: str
     description: str
-    maxPoints: Optional[float] = None
+    maxPoints: float | None = None
     nodes: list[dict] | str  # Using dict to match the flexible Node structure, or string for serialized JSON
     edges: list[dict] | str  # Using dict to match the flexible Edge structure, or string for serialized JSON
 
@@ -80,7 +78,7 @@ class RuleEvaluationSummary(BaseModel):
     """Summary of individual rule evaluation within a group"""
     rule_id: str
     rule_name: str
-    description: Optional[str] = None  # Optional for backward compatibility
+    description: str | None = None  # Optional for backward compatibility
     earned_points: float
     confidence: float
     success: bool
@@ -91,18 +89,18 @@ class BehavioralRuleGroup(BaseModel):
     group_id: str              # Unique identifier (e.g., "part_1_group")
     name: str                  # Display name in rubric
     description: str           # Criterion description
-    maxPoints: Optional[float] = None  # Maximum points for the criterion (auto-calculated if not provided)
+    maxPoints: float | None = None  # Maximum points for the criterion (auto-calculated if not provided)
     condition: GroupCondition  # "XOR" or "AND"
     rule_ids: list[str]        # List of behavioral rule IDs (min 1)
 
     # Evaluation results (embedded after evaluation)
-    last_evaluation: Optional[str] = None           # ISO 8601 timestamp of last evaluation
-    earned_points: Optional[float] = None           # MAX points from rules
-    best_rule_id: Optional[str] = None              # Rule with best points
-    fulfilled: Optional[bool] = None                # Whether group requirements met
-    confidence: Optional[float] = None              # Overall confidence score
-    problematic_elements: Optional[list[str]] = None  # BPMN elements with issues
-    rule_results: Optional[list[RuleEvaluationSummary]] = None  # Individual rule points
+    last_evaluation: str | None = None           # ISO 8601 timestamp of last evaluation
+    earned_points: float | None = None           # MAX points from rules
+    best_rule_id: str | None = None              # Rule with best points
+    fulfilled: bool | None = None                # Whether group requirements met
+    confidence: float | None = None              # Overall confidence score
+    problematic_elements: list[str] | None = None  # BPMN elements with issues
+    rule_results: list[RuleEvaluationSummary] | None = None  # Individual rule points
 
     @field_validator('rule_ids')
     @classmethod
@@ -120,7 +118,7 @@ class BehavioralRuleManager:
         self.rules_dir.mkdir(parents=True, exist_ok=True)
         self.templates_dir = self.rules_dir.parent / "templates"
 
-    def get_template(self, rule_id: str) -> Optional[BehavioralRule]:
+    def get_template(self, rule_id: str) -> BehavioralRule | None:
         """Load a read-only template by ID from the templates directory"""
         safe_id = rule_id.replace("/", "_").replace("\\", "_")
         template_path = self.templates_dir / f"{safe_id}.json"
@@ -186,7 +184,7 @@ class BehavioralRuleManager:
 
         return rules
 
-    def get_rule(self, rule_id: str) -> Optional[BehavioralRule]:
+    def get_rule(self, rule_id: str) -> BehavioralRule | None:
         """Get a specific behavioral rule by ID"""
         rule_path = self._get_rule_path(rule_id)
 
@@ -266,7 +264,7 @@ class BehavioralRuleManager:
 
         return groups
 
-    def get_group(self, group_id: str) -> Optional[BehavioralRuleGroup]:
+    def get_group(self, group_id: str) -> BehavioralRuleGroup | None:
         """Get a specific group by ID"""
         group_path = self._get_group_path(group_id)
 

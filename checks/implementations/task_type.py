@@ -23,6 +23,25 @@ class TaskTypeCheck(Check):
         "scriptTask",
     ]
 
+    input_scheme: ClassVar[list[CheckFormInput]] = [
+        CheckFormInput(
+            input_label="Labels and Task Types",
+            input_type=CheckInputType.SELECTION,
+            data=CheckSelectionType(
+                placeholder="Task Type",
+                accepted_values=acceptable_task_types,
+                pairs=[]
+            ),
+            multiple=True,
+        ),
+    ]
+
+    @classmethod
+    def load_dependencies(cls) -> None:
+        """Load sentence transformer model for semantic matching"""
+        from utils.similarity import load_model
+        load_model()
+
     def is_applicable(self) -> bool:
         tasks = extract_all_tasks(self.model_xml, allow_abstract=True)
         overall_types = set([element.task_type for element in tasks])
@@ -31,20 +50,6 @@ class TaskTypeCheck(Check):
             return False
 
         return True
-
-    def inputs(self) -> list[CheckFormInput]:
-        return [
-            CheckFormInput(
-                input_label="Labels and Task Types",
-                input_type=CheckInputType.SELECTION,
-                data=CheckSelectionType(
-                    placeholder="Task Type",
-                    accepted_values=self.acceptable_task_types,
-                    pairs=[]
-                ),
-                multiple=True,
-            ),
-        ]
 
     def analyze(self, inputs: list[CheckFormInput] | None = None) -> CheckResult:
         if inputs is None:
@@ -78,7 +83,6 @@ class TaskTypeCheck(Check):
                     ),
                 ],
             )
-
 
         target_tasks: list[ExtractedTask] = extract_all_tasks(self.model_xml, allow_abstract=True)
 

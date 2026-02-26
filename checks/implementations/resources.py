@@ -28,6 +28,16 @@ class PoolLaneCheck(Check):
 
     key_label: ClassVar[str] = "Pool name"
     value_label: ClassVar[str] = "Lane name"
+    input_scheme: ClassVar[list[CheckFormInput]] = [
+            CheckFormInput(
+                input_label="Pools and lanes",
+                input_type=CheckInputType.KEY_VALUE,
+                data=CheckKeyValueType(
+                    key_label=key_label, value_label=value_label, pairs=[]
+                ),
+                multiple=True,
+            ),
+        ]
 
     def analyze(
         self, inputs: list[CheckFormInput] | None = None
@@ -83,6 +93,8 @@ class PoolLaneCheck(Check):
         submission_pools = [pool[0] for pool in pools if pool[0] is not None]
 
         reference_pools: list[str] = []
+
+        v: CheckFormInput
         for v in inputs:
             # TODO: Improper typing
             for pool in v.data.pairs:
@@ -156,7 +168,7 @@ class PoolLaneCheck(Check):
                     matched_lane_ids.append(current_lane[submission_lane_idx].id)
 
                 missing_matches = set(
-                    [lane.id for lane in current_lane if not None]
+                    [lane.id for lane in current_lane if lane.id is not None]
                 ).difference(matched_lane_ids)
                 for missed_match in missing_matches:
                     missing_ids.append(missed_match)
@@ -171,17 +183,6 @@ class PoolLaneCheck(Check):
             inputs=inputs,
         )
 
-    def inputs(self) -> list[CheckFormInput]:
-        return [
-            CheckFormInput(
-                input_label="Pools and lanes",
-                input_type=CheckInputType.KEY_VALUE,
-                data=CheckKeyValueType(
-                    key_label=self.key_label, value_label=self.value_label, pairs=[]
-                ),
-                multiple=True,
-            ),
-        ]
 
     def is_applicable(self) -> bool:
         try:

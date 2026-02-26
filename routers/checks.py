@@ -88,6 +88,7 @@ async def analyze_submission(
                     SubmissionCriterionResult(
                         id=criterion_id,
                         fulfilled=result.fulfilled,
+                        inputs=algorithm.input_scheme,
                         confidence=result.overall_confidence,
                         problematic_elements=result.problematic_elements,
                         score=result.earned_points if round(result.earned_points, 2) != group.maxPoints else None,
@@ -117,6 +118,7 @@ async def analyze_submission(
                     SubmissionCriterionResult(
                         id=criterion_id,
                         fulfilled=result.earned_points > 0,
+                        inputs=algorithm.input_scheme,  # Keep template_id reference
                         confidence=result.confidence,
                         problematic_elements=problematic_elements,
                         score=result.earned_points if round(result.earned_points, 2) != rule.maxPoints else None,

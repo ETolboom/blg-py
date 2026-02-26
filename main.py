@@ -9,8 +9,6 @@ from fastapi import FastAPI
 from pydantic import ValidationError
 
 from checks.manager import CheckRegistry
-
-logger = logging.getLogger(__name__)
 from routers import submissions, rubric
 from routers import checks as checks_router
 from routers import behavioral_rules, behavioral_rule_groups
@@ -18,6 +16,7 @@ from rubric import Rubric
 from rules.manager import BehavioralRuleManager
 from services.submissions import SubmissionService
 
+logger = logging.getLogger(__name__)
 
 def get_rubric_from_disk(base_path: str) -> Rubric | None:
     if os.path.exists(os.path.join(base_path, "rubric.json")):
@@ -81,18 +80,25 @@ app.include_router(behavioral_rule_groups.router, prefix="/api", tags=["behavior
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        logger.error("Please provide a folder path")
-        logger.error("Usage: python main.py <folder path>")
+        print("Please provide a folder path")
+        print("Usage: python main.py <folder path>")
         sys.exit(1)
 
     base_path = sys.argv[1]
 
     if not os.path.isdir(base_path):
-        logger.error("Please provide a valid folder path")
-        logger.error("Usage: python main.py <folder path>")
+        print("Error: Please provide a valid folder path")
+        print("Usage: python main.py <folder path>")
+        sys.exit(1)
+
+    # Load checks during startup (dependencies loaded automatically)
+    try:
+        checks.manager.load_checks()
+    except Exception as e:
+        print(f"Could not load checks: {e}")
         sys.exit(1)
 
     # Set base_path before lifespan runs
     app.state.base_path = base_path
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)

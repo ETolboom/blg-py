@@ -1,9 +1,13 @@
 import logging
 from typing import ClassVar, Optional
+from __future__ import annotations
+
+from typing import ClassVar
 from dataclasses import dataclass, field
+from collections import deque
 
 from checks import Check, CheckComplexity, CheckFormInput, CheckResult
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from bpmn.bpmn import get_bpmn, Bpmn
 from bpmn.struct import PoolElement
@@ -15,50 +19,50 @@ class NodeHandle(BaseModel):
     id: str
     type: str
     nodeId: str
-    position: Optional[str] = None
-    x: Optional[float] = None
-    y: Optional[float] = None
-    width: Optional[float] = None
-    height: Optional[float] = None
+    position: str | None = None
+    x: float | None = None
+    y: float | None = None
+    width: float | None = None
+    height: float | None = None
 
 
 class Handles(BaseModel):
-    source: Optional[list[NodeHandle]] = None
-    target: Optional[list[NodeHandle]] = None
+    source: list[NodeHandle] | None = None
+    target: list[NodeHandle] | None = None
 
 
 class NodeData(BaseModel):
     label: str
-    points: Optional[float] = None
-    checkType: Optional[str] = None
-    elementType: Optional[str] = None
-    gatewayType: Optional[str] = None
-    gatewayOutcomes: Optional[list[str]] = None
-    isGatewayChecked: Optional[bool] = None
-    isOutcomeChecked: Optional[bool] = None
-    relationshipType: Optional[str] = None
-    idealDistance: Optional[int] = None
-    maxDistance: Optional[int] = None
-    connectorType: Optional[str] = None
-    eventType: Optional[str] = None
-    eventPosition: Optional[str] = None
-    eventBehavior: Optional[str] = None
+    points: float | None = None
+    checkType: str | None = None
+    elementType: str | None = None
+    gatewayType: str | None = None
+    gatewayOutcomes: list[str] | None = None
+    isGatewayChecked: bool | None = None
+    isOutcomeChecked: bool | None = None
+    relationshipType: str | None = None
+    idealDistance: int | None = None
+    maxDistance: int | None = None
+    connectorType: str | None = None
+    eventType: str | None = None
+    eventPosition: str | None = None
+    eventBehavior: str | None = None
 
 
 class GraphNode(BaseModel):
     id: str
     type: str
-    handleBounds: Optional[Handles] = None
+    handleBounds: Handles | None = None
     data: NodeData
-    dimensions: Optional[dict] = None
-    computedPosition: Optional[dict] = None
-    position: Optional[dict] = None
-    selected: Optional[bool] = None
-    dragging: Optional[bool] = None
-    resizing: Optional[bool] = None
-    initialized: Optional[bool] = None
-    isParent: Optional[bool] = None
-    events: Optional[dict] = None
+    dimensions: dict | None = None
+    computedPosition: dict | None = None
+    position: dict | None = None
+    selected: bool | None = None
+    dragging: bool | None = None
+    resizing: bool | None = None
+    initialized: bool | None = None
+    isParent: bool | None = None
+    events: dict | None = None
 
 
 class Edge(BaseModel):
@@ -66,18 +70,18 @@ class Edge(BaseModel):
     type: str
     source: str
     target: str
-    sourceHandle: Optional[str] = None
-    targetHandle: Optional[str] = None
-    data: Optional[dict] = None
-    events: Optional[dict] = None
-    label: Optional[str] = None
-    sourceNode: Optional[GraphNode] = None
-    targetNode: Optional[GraphNode] = None
-    sourceX: Optional[float] = None
-    sourceY: Optional[float] = None
-    targetX: Optional[float] = None
-    targetY: Optional[float] = None
-    outcome: Optional[str] = None
+    sourceHandle: str | None = None
+    targetHandle: str | None = None
+    data: dict | None = None
+    events: dict | None = None
+    label: str | None = None
+    sourceNode: GraphNode | None = None
+    targetNode: GraphNode | None = None
+    sourceX: float | None = None
+    sourceY: float | None = None
+    targetX: float | None = None
+    targetY: float | None = None
+    outcome: str | None = None
 
 
 class WorkflowData(BaseModel):
@@ -108,11 +112,11 @@ class DecisionTreeNode(BaseModel):
     points: float = 0.0
 
     # For gateway nodes
-    outcomes: Optional[list[str]] = None
-    children: Optional[dict[str, "DecisionTreeNode"]] = None
+    outcomes: list[str] | None = None
+    children: dict[str, DecisionTreeNode] | None = None
 
     # For element nodes
-    next_node: Optional["DecisionTreeNode"] = None
+    next_node: DecisionTreeNode | None = None
 
     # For tracking problematic paths
     is_problematic: bool = False
@@ -134,7 +138,7 @@ class ConnectorNode(BaseModel):
     minimum_visit_count: int
 
     # Track which branches have visited this connector
-    visited_by_branches: set[str] = set()
+    visited_by_branches: set[str] = Field(default_factory=set)
 
     def register_visit(self, branch_id: str) -> bool:
         """Register a branch visit, return True if convergence complete"""
@@ -296,7 +300,7 @@ class DivergencePoint:
     connector_type: str              # "AND" or "XOR"
 
 
-def _find_start_node(nodes: list[GraphNode], edges: list[Edge]) -> Optional[GraphNode]:
+def _find_start_node(nodes: list[GraphNode], edges: list[Edge]) -> GraphNode | None:
     # Collect all node IDs that are targets (have incoming edges)
     target_node_ids = {edge.target for edge in edges}
 
@@ -325,14 +329,11 @@ class BehavioralRuleCheck(Check):
     description: ClassVar[str] = "Check the model based on a complex set of rules"
     check_complexity: ClassVar[CheckComplexity] = CheckComplexity.COMPLEX
     threshold: ClassVar[float] = 0.0
+    input_scheme: ClassVar[list[CheckFormInput]] = []
 
     def is_applicable(self) -> bool:
         # Should not appear during onboarding
         return False
-
-    def inputs(self) -> list[CheckFormInput]:
-        # Behavioral rules have different logic
-        return []
 
     def analyze_tree(self, tree: DecisionTreeNode) -> tuple[bool, list[str], float]:
         """
@@ -392,10 +393,10 @@ class BehavioralRuleCheck(Check):
         for branch in branches:
             connectors_in_path: set[str] = set()
             visited: set[str] = set()
-            queue = [branch]
+            queue = deque([branch])
 
             while queue:
-                current = queue.pop(0)
+                current = queue.popleft()
 
                 if current.id in visited:
                     continue
@@ -424,10 +425,10 @@ class BehavioralRuleCheck(Check):
 
         # If multiple common connectors, return the closest one (first one encountered in BFS from any branch)
         visited: set[str] = set()
-        queue = [branches[0]]
+        queue = deque([branches[0]])
 
         while queue:
-            current = queue.pop(0)
+            current = queue.popleft()
 
             if current.id in visited:
                 continue

@@ -1,43 +1,42 @@
 import logging
 
 import torch
-from transformers import AutoTokenizer, AutoModel
+from sentence_transformers import SentenceTransformer
+
+_model: SentenceTransformer | None = None
 
 logger = logging.getLogger(__name__)
 
-tokenizer = AutoTokenizer.from_pretrained(
-    "sentence-transformers/all-mpnet-base-v2", cache_dir="./cache"
-)
-model = AutoModel.from_pretrained(
-    "sentence-transformers/all-mpnet-base-v2", cache_dir="./cache"
-)
+def load_model() -> None:
+    """Load the sentence transformer model. Must be called before using similarity functions."""
+    global _model
+    if _model is None:
+        print("Loading sentence transformer model...")
+        _model = SentenceTransformer(
+            "sentence-transformers/all-mpnet-base-v2", cache_folder="./cache"
+        )
+        print("Sentence transformer model loaded successfully")
+
+
+def _get_model() -> SentenceTransformer:
+    """Get the loaded model, raising an error if not loaded."""
+    if _model is None:
+        raise RuntimeError(
+            "Sentence transformer model not loaded. Call load_model() first."
+        )
+    return _model
+
+
+def _embed(labels: list[str]) -> torch.Tensor:
+    return torch.tensor(_get_model().encode(labels, normalize_embeddings=True))
 
 
 def create_similarity_matrix(
-    target_labels: list[str], reference_labels: list[str], self_similarity=False
-):
-    target_inputs = tokenizer(
-        target_labels, padding=True, truncation=True, return_tensors="pt"
-    )
-    with torch.no_grad():
-        target_embeddings = model(**target_inputs).last_hidden_state.mean(dim=1)
-    normalized_target_embeddings = torch.nn.functional.normalize(
-        target_embeddings, p=2, dim=1
-    )
-
-    reference_inputs = tokenizer(
-        reference_labels, padding=True, truncation=True, return_tensors="pt"
-    )
-    with torch.no_grad():
-        reference_embeddings = model(**reference_inputs).last_hidden_state.mean(dim=1)
-
-    normalized_reference_embeddings = torch.nn.functional.normalize(
-        reference_embeddings, p=2, dim=1
-    )
-
-    similarity_matrix = torch.mm(
-        normalized_target_embeddings, normalized_reference_embeddings.t()
-    )
+        target_labels: list[str],
+        reference_labels: list[str],
+        self_similarity: bool = False,
+) -> torch.Tensor:
+    similarity_matrix = torch.mm(_embed(target_labels), _embed(reference_labels).t())
 
     if self_similarity:
         if reference_labels != target_labels:
@@ -45,36 +44,29 @@ def create_similarity_matrix(
         # When dealing with self-similarity such as with duplicate tasks
         similarity_matrix.fill_diagonal_(-1)
 
-    # Compute cosine similarity matrix
     return similarity_matrix
 
 
 def match_labels(
-    target: list[str], reference: list[str], match_threshold: float
+        target: list[str],
+        reference: list[str],
+        match_threshold: float,
 ) -> list[tuple[int, int]]:
     similarity_matrix = create_similarity_matrix(target, reference)
+    ranked_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
 
-    matched_indices = set()
-
-    matches = []
+    matched_ref_indices: set[int] = set()
+    matches: list[tuple[int, int]] = []
 
     for target_idx in range(len(target)):
-        best_reference_idx = None
-        best_score = -1
-
-        for reference_idx in range(len(reference)):
-            if reference_idx in matched_indices:
+        for ref_idx in ranked_indices[target_idx].tolist():
+            if ref_idx in matched_ref_indices:
                 continue
-
-            score = similarity_matrix[target_idx, reference_idx]
-            if score > best_score:
-                best_score = score
-                best_reference_idx = reference_idx
-
-        if best_score < match_threshold or best_reference_idx is None:
-            continue
-
-        matched_indices.add(best_reference_idx)
-        matches.append((target_idx, best_reference_idx))
+            score: float = similarity_matrix[target_idx, ref_idx].item()
+            if score < match_threshold:
+                break
+            matched_ref_indices.add(ref_idx)
+            matches.append((target_idx, ref_idx))
+            break
 
     return matches

@@ -77,9 +77,9 @@ class Rubric(BaseModel):
             if not criterion.fulfilled:
                 return 0.0
             elif criterion.score is not None:
-                return max(0.0, min(1.0, criterion.score))
+                return max(0.0, criterion.score)
             else:
-                return max(0.0, min(1.0, criterion.default_points))
+                return max(0.0, criterion.default_points)
 
         # Add criteria data
         current_row = 2

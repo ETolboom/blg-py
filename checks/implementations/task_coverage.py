@@ -14,6 +14,13 @@ class TaskCoverageCheck(Check):
     )
     check_complexity: ClassVar[CheckComplexity] = CheckComplexity.SIMPLE
     threshold: ClassVar[float] = 0.8
+    input_scheme: ClassVar[list[CheckFormInput]] = []
+
+    @classmethod
+    def load_dependencies(cls) -> None:
+        """Load sentence transformer model for semantic similarity"""
+        from utils.similarity import load_model
+        load_model()
 
     def analyze(self, inputs: list[CheckFormInput] | None = None) -> CheckResult:
         tasks: list[ExtractedTask] = extract_all_tasks(self.model_xml)
@@ -100,9 +107,6 @@ class TaskCoverageCheck(Check):
             problematic_elements=problematic_elements,
             inputs=inputs,
         )
-
-    def inputs(self) -> list[CheckFormInput]:
-        return []
 
     def is_applicable(self) -> bool:
         return True
