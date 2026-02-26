@@ -1,11 +1,14 @@
 import importlib
 import inspect
+import logging
 import os
 from pathlib import Path
 
 from pydantic import ValidationError
 
 from checks import Check, CheckFormInput
+
+logger = logging.getLogger(__name__)
 
 
 class CheckRegistry:
@@ -62,8 +65,8 @@ class CheckRegistry:
                     except Exception as e:
                         raise Exception(f"could not load {module_name}: {e}")
 
-        print(f"Checks loaded successfully ({len(self._check_classes)}).")
-        print(f"Found the following checks:\n{check_names}")
+        logger.info("Checks loaded successfully (%d).", len(self._check_classes))
+        logger.info("Found the following checks: %s", check_names)
 
     def create_manager(self, model_xml) -> "CheckManager":
         return CheckManager(model_xml=model_xml, check_classes=self._check_classes)

@@ -1,6 +1,9 @@
+import logging
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+
+logger = logging.getLogger(__name__)
 
 from checks import CheckComplexity, CheckFormInput, CheckInputType, CheckResult
 from checks.implementations.behavioral import WorkflowData, BehavioralRuleCheck
@@ -323,13 +326,13 @@ async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: st
 
         if template is None:
             missing.append(template_id)
-            print(f"[Unmerge] Warning: Template '{template_id}' not found on disk")
+            logger.warning("[Unmerge] Template '%s' not found on disk", template_id)
             continue
 
         # Check if already in rubric (avoid duplicates)
         exists = any(c.id == template_id for c in rubric.criteria)
         if exists:
-            print(f"[Unmerge] Template '{template_id}' already in rubric, skipping")
+            logger.info("[Unmerge] Template '%s' already in rubric, skipping", template_id)
             continue
 
         # Insert template at group's position
@@ -357,7 +360,7 @@ async def _unmerge_and_delete_group(criterion_id: str, index: int, base_path: st
 
         restored.append(template_id)
         insert_position += 1  # Next template inserts after this one
-        print(f"[Unmerge] Restored template '{template_id}' at position {insert_position-1}")
+        logger.info("[Unmerge] Restored template '%s' at position %d", template_id, insert_position - 1)
 
     # Delete group criterion (now at insert_position due to insertions)
     del rubric.criteria[insert_position]

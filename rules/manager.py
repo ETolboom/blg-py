@@ -1,10 +1,13 @@
 import json
+import logging
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel, ValidationError, field_validator, model_validator
+
+logger = logging.getLogger(__name__)
 
 
 def calculate_rule_max_points(nodes: list[dict]) -> float:
@@ -27,7 +30,7 @@ def calculate_group_max_points(
         if rule:
             max_points_values.append(rule.maxPoints)
         else:
-            print(f"Warning: Rule '{rule_id}' not found")
+            logger.warning("Rule '%s' not found", rule_id)
 
     return max(max_points_values) if max_points_values else 0.0
 
@@ -60,8 +63,7 @@ class BehavioralRule(BaseModel):
 
         # Log warning if stored value differs
         if self.maxPoints is not None and abs(self.maxPoints - calculated) > 0.01:
-            print(f"Warning: Template {self.id}: Stored maxPoints ({self.maxPoints}) "
-                  f"differs from calculated ({calculated}). Using calculated value.")
+            logger.warning("Template %s: Stored maxPoints (%s) differs from calculated (%s). Using calculated value.", self.id, self.maxPoints, calculated)
 
         # Always use calculated value
         self.maxPoints = calculated
@@ -153,7 +155,7 @@ class BehavioralRuleManager:
                         "maxPoints": data.get("maxPoints"),
                     })
             except Exception as e:
-                print(f"Error loading template {file_path}: {e}")
+                logger.error("Error loading template %s: %s", file_path, e)
                 continue
 
         return templates
@@ -179,7 +181,7 @@ class BehavioralRuleManager:
                         "maxPoints": data.get("maxPoints"),
                     })
             except Exception as e:
-                print(f"Error loading rule {file_path}: {e}")
+                logger.error("Error loading rule %s: %s", file_path, e)
                 continue
 
         return rules
@@ -259,7 +261,7 @@ class BehavioralRuleManager:
                         "problematic_elements": data.get("problematic_elements"),
                     })
             except Exception as e:
-                print(f"Error loading group {file_path}: {e}")
+                logger.error("Error loading group %s: %s", file_path, e)
                 continue
 
         return groups
@@ -290,8 +292,7 @@ class BehavioralRuleManager:
 
         # Log warning if differs
         if group.maxPoints is not None and abs(group.maxPoints - calculated_max) > 0.01:
-            print(f"Warning: Group {group.group_id}: Stored maxPoints ({group.maxPoints}) "
-                  f"differs from calculated ({calculated_max}). Using calculated value.")
+            logger.warning("Group %s: Stored maxPoints (%s) differs from calculated (%s). Using calculated value.", group.group_id, group.maxPoints, calculated_max)
 
         group.maxPoints = calculated_max
 

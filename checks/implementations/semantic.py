@@ -71,7 +71,6 @@ class ExactDuplicateTasks(Check):
 
         def parse_duplicates(duplicates: dict[str, list[ExtractedTask]]):
             for key, group in duplicates.items():
-                # print(f"Duplicate for {key}: {group}")
                 pair_one_element_id = group[0].id
                 if pair_one_element_id not in problematic_elements:
                     problematic_elements.append(pair_one_element_id)
@@ -118,7 +117,6 @@ class SemanticDuplicateTasks(Check):
 
         def parse_duplicates(duplicates):
             for key, group in duplicates.items():
-                # print(f"Duplicate for {key}: {group}")
                 pair_one_element_id = group[0].id
                 if pair_one_element_id not in problematic_elements:
                     problematic_elements.append(pair_one_element_id)

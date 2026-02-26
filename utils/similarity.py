@@ -1,5 +1,9 @@
+import logging
+
 import torch
 from transformers import AutoTokenizer, AutoModel
+
+logger = logging.getLogger(__name__)
 
 tokenizer = AutoTokenizer.from_pretrained(
     "sentence-transformers/all-mpnet-base-v2", cache_dir="./cache"
@@ -37,9 +41,7 @@ def create_similarity_matrix(
 
     if self_similarity:
         if reference_labels != target_labels:
-            print(
-                "WARN: The labels do not match, are you sure that you want to evaluate self-similarity?"
-            )
+            logger.warning("The labels do not match, are you sure that you want to evaluate self-similarity?")
         # When dealing with self-similarity such as with duplicate tasks
         similarity_matrix.fill_diagonal_(-1)
 

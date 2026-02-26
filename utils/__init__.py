@@ -1,6 +1,9 @@
+import logging
 from dataclasses import dataclass
 from enum import Enum
 from xml.etree import ElementTree
+
+logger = logging.getLogger(__name__)
 
 
 def get_elements_by_type(model_xml: str, element_type: str) -> list[tuple[str, str]]:
@@ -76,7 +79,7 @@ def extract_all_tasks(model_xml: str, allow_abstract: bool = True) -> list[Extra
             for element_name, element_id in get_elements_by_type(model_xml, task_type):
                 tasks.append(ExtractedTask(element_name, element_id, task_type))        
         except ValueError as e:
-            print(f"Could not find tasks with type {task_type}: {e}")
+            logger.debug("Could not find tasks with type %s: %s", task_type, e)
             # Element type not found
 
     return tasks

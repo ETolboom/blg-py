@@ -1,3 +1,4 @@
+import logging
 from typing import ClassVar, Optional
 from dataclasses import dataclass, field
 
@@ -6,6 +7,8 @@ from pydantic import BaseModel
 
 from bpmn.bpmn import Bpmn
 from bpmn.struct import PoolElement
+
+logger = logging.getLogger(__name__)
 
 
 class NodeHandle(BaseModel):
@@ -510,41 +513,41 @@ class BehavioralRuleCheck(Check):
             next_nodes = list(workflow.next(context.workflow_pos))
 
             if not next_nodes:
-                print("No more workflow nodes to process")
+                logger.debug("No more workflow nodes to process")
                 return context  # End of path
 
             # MULTIPLE NEXT NODES (divergence point)
             if len(next_nodes) != 1:
-                print(f"\n--- Detected divergence with {len(next_nodes)} branches ---")
+                logger.debug("Detected divergence with %d branches", len(next_nodes))
                 return self._handle_divergence(context, next_nodes, connectors, model, workflow)
 
             # SINGLE NEXT NODE (linear flow)
             next_node = next_nodes[0]
 
-            print(f"\n--- Processing workflow node {next_node.id} ---")
-            print(f"Node label: '{next_node.data.label}'")
-            print(f"Node type: {next_node.type}")
+            logger.debug("Processing workflow node %s", next_node.id)
+            logger.debug("Node label: '%s'", next_node.data.label)
+            logger.debug("Node type: %s", next_node.type)
 
             # Handle connector nodes
             if next_node.id in connectors:
                 connector = connectors[next_node.id]
                 branch_id = f"{context.workflow_pos.id}_br"
 
-                print(f"Reached connector: {connector.node_type} (visit {connector.visit_count + 1}/{connector.minimum_visit_count})")
+                logger.debug("Reached connector: %s (visit %d/%d)", connector.node_type, connector.visit_count + 1, connector.minimum_visit_count)
 
                 if connector.register_visit(branch_id):
                     # Convergence complete, continue past connector
-                    print(f"Connector convergence complete, continuing...")
+                    logger.debug("Connector convergence complete, continuing...")
                     context.workflow_pos = next_node
                     continue
                 else:
                     # Need more branches, pause here
-                    print(f"Connector needs more branches, pausing this branch")
+                    logger.debug("Connector needs more branches, pausing this branch")
                     return context
 
             # Handle followedBy connectors
             elif next_node.data.relationshipType == "followedBy":
-                print(f"Updating distance constraints: ideal={next_node.data.idealDistance}, max={next_node.data.maxDistance}")
+                logger.debug("Updating distance constraints: ideal=%s, max=%s", next_node.data.idealDistance, next_node.data.maxDistance)
                 context.update_distance_constraints(next_node)
                 context.workflow_pos = next_node
                 continue
@@ -557,7 +560,7 @@ class BehavioralRuleCheck(Check):
                 workflow_label_norm = " ".join(next_node.data.label.split()).lower()
 
                 if bpmn_label_norm == workflow_label_norm:
-                    print(f"Already at target element '{next_node.data.label}', skipping search")
+                    logger.debug("Already at target element '%s', skipping search", next_node.data.label)
                     # Still record this as a perfect match
                     context.match_scores.append(1.0)
 
@@ -584,7 +587,7 @@ class BehavioralRuleCheck(Check):
 
                 bpmn_result = self._find_bpmn_match(context, next_node, model)
                 if not bpmn_result[1]:  # No match found
-                    print(f"Problematic: Could not find BPMN element for '{next_node.data.label}'")
+                    logger.debug("Problematic: Could not find BPMN element for '%s'", next_node.data.label)
 
                     # Create a problematic match detail with score 0
                     match_detail = MatchDetail(
@@ -611,7 +614,7 @@ class BehavioralRuleCheck(Check):
                     continue
 
                 visit_count, bpmn_elem, match_score = bpmn_result
-                print(f"Found BPMN match '{bpmn_elem.label}' at distance {visit_count} with score {match_score:.3f}")
+                logger.debug("Found BPMN match '%s' at distance %d with score %.3f", bpmn_elem.label, visit_count, match_score)
 
                 context.apply_match_result(bpmn_result, next_node)
                 context.workflow_pos = next_node
@@ -619,7 +622,7 @@ class BehavioralRuleCheck(Check):
 
             else:
                 # Unknown node type, move forward anyway
-                print(f"Unknown node type, moving to next")
+                logger.debug("Unknown node type '%s', moving to next", next_node.type)
                 context.workflow_pos = next_node
                 continue
 
@@ -633,7 +636,7 @@ class BehavioralRuleCheck(Check):
         connector_id = self._find_convergence_point(branches, workflow)
         connector = connectors[connector_id]
 
-        print(f"Divergence will converge at connector: {connector.node_type} (ID: {connector_id})")
+        logger.debug("Divergence will converge at connector: %s (ID: %s)", connector.node_type, connector_id)
 
         # Save BPMN state at divergence
         divergence_bpmn_state = context.bpmn_pos
@@ -653,16 +656,16 @@ class BehavioralRuleCheck(Check):
                              workflow: WorkflowData) -> TraversalContext:
         """All branches must reach connector"""
 
-        print(f"\n=== Handling AND branches ({len(branches)} branches) ===")
+        logger.debug("Handling AND branches (%d branches)", len(branches))
 
         # Save the points before divergence to avoid double-counting
         base_points = context.accumulated_points
-        print(f"Points before divergence: {base_points}")
+        logger.debug("Points before divergence: %s", base_points)
 
         branch_results = []
 
         for i, branch_start in enumerate(branches):
-            print(f"\n--- Exploring AND branch {i + 1}/{len(branches)} ---")
+            logger.debug("Exploring AND branch %d/%d", i + 1, len(branches))
 
             # Clone context for this branch
             branch_ctx = context.clone()
@@ -673,16 +676,16 @@ class BehavioralRuleCheck(Check):
             result_ctx = self._traverse_from(branch_ctx, model, connectors, workflow)
             branch_results.append(result_ctx)
 
-            print(f"Branch {i + 1} complete with {len(result_ctx.match_scores)} matches, points: {result_ctx.accumulated_points}")
+            logger.debug("Branch %d complete with %d matches, points: %s", i + 1, len(result_ctx.match_scores), result_ctx.accumulated_points)
 
         # Merge results with base points to avoid double-counting
-        print(f"\n--- Merging {len(branch_results)} AND branch results ---")
+        logger.debug("Merging %d AND branch results", len(branch_results))
         merged_ctx = self._merge_contexts(branch_results, base_points)
         merged_ctx.workflow_pos = self._get_node_by_id(connector.node_id, workflow)
-        print(f"Merged points: {merged_ctx.accumulated_points}")
+        logger.debug("Merged points: %s", merged_ctx.accumulated_points)
 
         # Continue past connector
-        print(f"Continuing past AND connector...")
+        logger.debug("Continuing past AND connector...")
         return self._traverse_from(merged_ctx, model, connectors, workflow)
 
     def _handle_xor_branches(self, context: TraversalContext, branches: list[GraphNode],
@@ -691,11 +694,11 @@ class BehavioralRuleCheck(Check):
                              workflow: WorkflowData) -> TraversalContext:
         """At least one branch must succeed"""
 
-        print(f"\n=== Handling XOR branches ({len(branches)} branches) ===")
+        logger.debug("Handling XOR branches (%d branches)", len(branches))
         successful_results = []
 
         for i, branch_start in enumerate(branches):
-            print(f"\n--- Trying XOR branch {i + 1}/{len(branches)} ---")
+            logger.debug("Trying XOR branch %d/%d", i + 1, len(branches))
             try:
                 # Clone context for this branch
                 branch_ctx = context.clone()
@@ -706,10 +709,10 @@ class BehavioralRuleCheck(Check):
                 result_ctx = self._traverse_from(branch_ctx, model, connectors, workflow)
                 successful_results.append(result_ctx)
 
-                print(f"XOR branch {i + 1} succeeded with confidence {result_ctx.confidence:.3f}")
+                logger.debug("XOR branch %d succeeded with confidence %.3f", i + 1, result_ctx.confidence)
             except Exception as e:
                 # Branch failed, try next
-                print(f"XOR branch {i + 1} failed: {e}")
+                logger.debug("XOR branch %d failed: %s", i + 1, e)
                 continue
 
         if not successful_results:
@@ -717,33 +720,31 @@ class BehavioralRuleCheck(Check):
 
         # Pick best scoring branch
         best_ctx = max(successful_results, key=lambda ctx: ctx.confidence)
-        print(f"\n--- Selecting best XOR branch (confidence: {best_ctx.confidence:.3f}) ---")
+        logger.debug("Selecting best XOR branch (confidence: %.3f)", best_ctx.confidence)
         best_ctx.workflow_pos = self._get_node_by_id(connector.node_id, workflow)
 
         # Continue past connector
-        print(f"Continuing past XOR connector...")
+        logger.debug("Continuing past XOR connector...")
         return self._traverse_from(best_ctx, model, connectors, workflow)
 
     def check_behavior(self, workflow: WorkflowData) -> BehavioralResult:
         """Analyze behavioral rules with AND/XOR connector support"""
 
-        print("\n" + "=" * 80)
-        print("BEHAVIORAL RULE CHECK WITH BRANCHING SUPPORT")
-        print("=" * 80)
+        logger.debug("BEHAVIORAL RULE CHECK WITH BRANCHING SUPPORT")
 
         # 1. Find starting workflow node
         workflow_start = _find_start_node(workflow.nodes, workflow.edges)
         if not workflow_start:
             raise Exception("Could not find root node in workflow")
 
-        print(f"\nFound starting workflow node: {workflow_start.id}")
-        print(f"Starting node label: '{workflow_start.data.label}'")
+        logger.debug("Found starting workflow node: %s", workflow_start.id)
+        logger.debug("Starting node label: '%s'", workflow_start.data.label)
 
         # 2. Extract and map connectors
         connectors = self._extract_and_map_connectors(workflow)
-        print(f"\nFound {len(connectors)} connector nodes:")
+        logger.debug("Found %d connector nodes:", len(connectors))
         for conn_id, conn in connectors.items():
-            print(f"  - {conn.node_type} connector (ID: {conn_id}, min_visits: {conn.minimum_visit_count})")
+            logger.debug("  - %s connector (ID: %s, min_visits: %d)", conn.node_type, conn_id, conn.minimum_visit_count)
 
         # 3. Parse BPMN model
         model = Bpmn(self.model_xml)
@@ -754,7 +755,7 @@ class BehavioralRuleCheck(Check):
             raise Exception("Could not find start node in BPMN model")
         bpmn_start, start_score = result
 
-        print(f"\nFound starting BPMN element: '{bpmn_start.label}' (score: {start_score:.3f})")
+        logger.debug("Found starting BPMN element: '%s' (score: %.3f)", bpmn_start.label, start_score)
 
         # 5. Create initial traversal context
         start_match_detail = MatchDetail(
@@ -782,16 +783,12 @@ class BehavioralRuleCheck(Check):
         )
 
         # 6. Traverse workflow with branch support
-        print("\n" + "=" * 80)
-        print("STARTING TRAVERSAL")
-        print("=" * 80)
+        logger.debug("STARTING TRAVERSAL")
 
         final_context = self._traverse_from(initial_context, model, connectors, workflow)
 
         # 7. Calculate results
-        print("\n" + "=" * 80)
-        print("TRAVERSAL COMPLETE")
-        print("=" * 80)
+        logger.debug("TRAVERSAL COMPLETE")
 
         confidence = final_context.confidence
         total_matches = len(final_context.match_scores)
@@ -799,10 +796,7 @@ class BehavioralRuleCheck(Check):
         # Round accumulated_points to avoid floating point errors (e.g., 1.20000002 -> 1.2)
         earned_points_rounded = round(final_context.accumulated_points, 2)
 
-        print(f"\nFinal Results:")
-        print(f"  - Total matches: {total_matches}")
-        print(f"  - Overall confidence: {confidence:.3f}")
-        print(f"  - Earned points: {earned_points_rounded}")
+        logger.debug("Final Results: total_matches=%d, confidence=%.3f, earned_points=%s", total_matches, confidence, earned_points_rounded)
 
         return BehavioralResult(
             id=self.id,
@@ -873,7 +867,7 @@ class BehavioralGroupEvaluator:
                 ))
             except Exception as e:
                 # Rule failed to evaluate
-                print(f"Rule {rule_id} failed: {e}")
+                logger.warning("Rule '%s' failed to evaluate: %s", rule_id, e)
                 rule_results.append(RuleEvaluationResult(
                     rule_id=rule_id,
                     rule_name=rule.name,

@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -8,6 +9,8 @@ from fastapi import FastAPI
 from pydantic import ValidationError
 
 from checks.manager import CheckRegistry
+
+logger = logging.getLogger(__name__)
 from routers import submissions, rubric
 from routers import checks as checks_router
 from routers import behavioral_rules, behavioral_rule_groups
@@ -21,7 +24,7 @@ def get_rubric_from_disk(base_path: str) -> Rubric | None:
         try:
             with open(os.path.join(base_path, "rubric.json")) as file:
                 rubric_data = json.load(file)
-            print("Rubric loaded successfully")
+            logger.info("Rubric loaded successfully")
             rubric = Rubric(**rubric_data)
 
             # Load reference XML from separate file
@@ -29,17 +32,17 @@ def get_rubric_from_disk(base_path: str) -> Rubric | None:
             if os.path.exists(ref_path):
                 with open(ref_path) as f:
                     rubric.assignment.reference_xml = f.read()
-                print("Reference XML loaded from reference.bpmn")
+                logger.info("Reference XML loaded from reference.bpmn")
 
             return rubric
         except json.JSONDecodeError:
-            print("Error: rubric.json contains invalid JSON")
+            logger.error("rubric.json contains invalid JSON")
             return None
         except ValidationError as e:
-            print(f"Error: JSON data doesn't match Rubric model: {e}")
+            logger.error("JSON data doesn't match Rubric model: %s", e)
             return None
         except Exception as e:
-            print(f"Error loading rubric: {e}")
+            logger.error("Error loading rubric: %s", e)
             return None
     else:
         return None
@@ -78,15 +81,15 @@ app.include_router(behavioral_rule_groups.router, prefix="/api", tags=["behavior
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Error: Please provide a folder path")
-        print("Usage: python main.py <folder path>")
+        logger.error("Please provide a folder path")
+        logger.error("Usage: python main.py <folder path>")
         sys.exit(1)
 
     base_path = sys.argv[1]
 
     if not os.path.isdir(base_path):
-        print("Error: Please provide a valid folder path")
-        print("Usage: python main.py <folder path>")
+        logger.error("Please provide a valid folder path")
+        logger.error("Usage: python main.py <folder path>")
         sys.exit(1)
 
     # Set base_path before lifespan runs

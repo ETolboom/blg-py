@@ -1,7 +1,10 @@
+import logging
 from xml.etree import ElementTree
 
 from bpmn.struct import Pool, PoolElement, parse_lane_set
 from utils.similarity import create_similarity_matrix
+
+logger = logging.getLogger(__name__)
 
 
 class Bpmn:
@@ -127,7 +130,7 @@ class Bpmn:
                 break
 
         if not target_element_id:
-            print(f"[_search_task_in_path] Flow '{flow_id}' not found")
+            logger.debug("[_search_task_in_path] Flow '%s' not found", flow_id)
             return -1, None, 0.0
 
         # Find the target element
@@ -138,10 +141,10 @@ class Bpmn:
                 break
 
         if not target_element:
-            print(f"[_search_task_in_path] Target element '{target_element_id}' not found")
+            logger.debug("[_search_task_in_path] Target element '%s' not found", target_element_id)
             return -1, None, 0.0
 
-        print(f"[_search_task_in_path] Distance {current_distance}: Found element '{target_element.label}' (type: {target_element.name}, event_def: {target_element.event_definition})")
+        logger.debug("[_search_task_in_path] Distance %d: Found element '%s' (type: %s, event_def: %s)", current_distance, target_element.label, target_element.name, target_element.event_definition)
 
         # Check if this element matches
         # First check if it's a boundary event being searched for
@@ -153,27 +156,27 @@ class Bpmn:
             is_match = False
             if "boundary" in task_label_lower and "event" in task_label_lower:
                 is_match = True
-                print(f"[_search_task_in_path] Generic boundary event match")
+                logger.debug("[_search_task_in_path] Generic boundary event match")
             elif target_element.event_definition and target_element.event_definition in task_label_lower:
                 is_match = True
-                print(f"[_search_task_in_path] Matched boundary event type '{target_element.event_definition}'")
+                logger.debug("[_search_task_in_path] Matched boundary event type '%s'", target_element.event_definition)
 
             if is_match:
-                print(f"[_search_task_in_path] MATCH on boundary event!")
+                logger.debug("[_search_task_in_path] MATCH on boundary event!")
                 return current_distance, target_element, 1.0
         elif target_element.label:
             # Match other elements by label similarity
             similarity_matrix = create_similarity_matrix([task_label], [target_element.label])
             similarity_score = similarity_matrix[0, 0].item()
-            print(f"[_search_task_in_path] Comparing '{target_element.label}' with '{task_label}': {similarity_score:.3f}")
+            logger.debug("[_search_task_in_path] Comparing '%s' with '%s': %.3f", target_element.label, task_label, similarity_score)
 
             if similarity_score >= match_threshold:
-                print(f"[_search_task_in_path] MATCH! Score {similarity_score:.3f} >= threshold {match_threshold}")
+                logger.debug("[_search_task_in_path] MATCH! Score %.3f >= threshold %.3f", similarity_score, match_threshold)
                 return current_distance, target_element, similarity_score
 
         # If no match and we haven't reached max distance, continue searching
         if current_distance >= max_distance:
-            print(f"[_search_task_in_path] Reached max_distance ({max_distance})")
+            logger.debug("[_search_task_in_path] Reached max_distance (%d)", max_distance)
             return -1, None, 0.0
 
         # Continue along the path if element has exactly 1 outgoing edge
@@ -183,16 +186,16 @@ class Bpmn:
         if len(target_element.outgoing) == 1:
             return self._search_task_in_path(target_element.outgoing[0], pool, task_label, match_threshold, max_distance, current_distance + 1)
         elif is_gateway and len(target_element.outgoing) > 1:
-            print(f"[_search_task_in_path] Element is a gateway with {len(target_element.outgoing)} outgoing edges, cannot continue (ambiguous path)")
+            logger.debug("[_search_task_in_path] Element is a gateway with %d outgoing edges, cannot continue (ambiguous path)", len(target_element.outgoing))
             return -1, None, 0.0
         else:
-            print(f"[_search_task_in_path] Element has {len(target_element.outgoing)} outgoing edges and is not a gateway, stopping search on this path")
+            logger.debug("[_search_task_in_path] Element has %d outgoing edges and is not a gateway, stopping search on this path", len(target_element.outgoing))
             return -1, None, 0.0
 
     def find_next_task(self, starting_element_id: str, task_label: str, max_distance: int = 2, match_threshold: float = 0.8) -> tuple[int, PoolElement | None, float]:
         """Find the next task/event element following a linear flow (1 outgoing edge per element)"""
-        print(f"\n[find_next_task] Starting search from element ID: {starting_element_id}")
-        print(f"[find_next_task] Looking for TASK: '{task_label}' (max_distance={max_distance}, threshold={match_threshold})")
+        logger.debug("[find_next_task] Starting search from element ID: %s", starting_element_id)
+        logger.debug("[find_next_task] Looking for TASK: '%s' (max_distance=%d, threshold=%.3f)", task_label, max_distance, match_threshold)
 
         # 1. Find the exact starting element
         starting_element: PoolElement | None = None
@@ -210,9 +213,9 @@ class Bpmn:
         if not starting_element or not pool_for_element:
             raise ValueError(f"Starting element with id '{starting_element_id}' not found")
 
-        print(f"[find_next_task] Starting element: '{starting_element.label}' (ID: {starting_element.id})")
-        print(f"[find_next_task] Outgoing connections: {starting_element.outgoing}")
-        print(f"[find_next_task] Boundary events: {starting_element.boundary_events}")
+        logger.debug("[find_next_task] Starting element: '%s' (ID: %s)", starting_element.label, starting_element.id)
+        logger.debug("[find_next_task] Outgoing connections: %s", starting_element.outgoing)
+        logger.debug("[find_next_task] Boundary events: %s", starting_element.boundary_events)
 
         current_element = starting_element
         visit_count = 0
@@ -222,7 +225,7 @@ class Bpmn:
         while visit_count < max_distance:
             # 2. Check boundary events first (if this is the first iteration)
             if is_first_iteration and current_element.boundary_events:
-                print(f"[find_next_task] Element has {len(current_element.boundary_events)} boundary event(s), checking them first")
+                logger.debug("[find_next_task] Element has %d boundary event(s), checking them first", len(current_element.boundary_events))
                 for boundary_event_id in current_element.boundary_events:
                     # Find the boundary event element
                     boundary_event = None
@@ -232,10 +235,10 @@ class Bpmn:
                             break
 
                     if not boundary_event:
-                        print(f"[find_next_task] Boundary event '{boundary_event_id}' not found, skipping")
+                        logger.debug("[find_next_task] Boundary event '%s' not found, skipping", boundary_event_id)
                         continue
 
-                    print(f"[find_next_task] Checking boundary event with type '{boundary_event.event_definition}' (ID: {boundary_event_id})")
+                    logger.debug("[find_next_task] Checking boundary event with type '%s' (ID: %s)", boundary_event.event_definition, boundary_event_id)
 
                     # Check if the boundary event itself matches by type
                     # Extract event type from task_label (e.g., "message event" -> "message", "timer" -> "timer")
@@ -245,59 +248,59 @@ class Bpmn:
                     # Match generic "boundary event" to any boundary event
                     if "boundary" in task_label_lower and "event" in task_label_lower:
                         is_boundary_event_match = True
-                        print(f"[find_next_task] Generic boundary event match")
+                        logger.debug("[find_next_task] Generic boundary event match")
                     # Match specific event types (message, timer, error, signal, etc.)
                     elif boundary_event.event_definition:
                         # Check if the event type appears in the task label
                         if boundary_event.event_definition in task_label_lower:
                             is_boundary_event_match = True
-                            print(f"[find_next_task] Matched event type '{boundary_event.event_definition}' in '{task_label}'")
+                            logger.debug("[find_next_task] Matched event type '%s' in '%s'", boundary_event.event_definition, task_label)
 
                     if is_boundary_event_match:
-                        print(f"[find_next_task] MATCH on boundary event!")
+                        logger.debug("[find_next_task] MATCH on boundary event!")
                         return 1, boundary_event, 1.0
 
                     # If boundary event doesn't match, continue down its outgoing path
                     if boundary_event.outgoing:
                         for outgoing_flow_id in boundary_event.outgoing:
-                            print(f"[find_next_task] Trying boundary event outgoing flow ID: {outgoing_flow_id}")
+                            logger.debug("[find_next_task] Trying boundary event outgoing flow ID: %s", outgoing_flow_id)
                             result = self._search_task_in_path(outgoing_flow_id, pool_for_element, task_label, match_threshold, max_distance, visit_count + 1)
                             if result[1] is not None:  # Found a match
                                 return result
 
-                print(f"[find_next_task] No match found in boundary events, checking normal outgoing flows")
+                logger.debug("[find_next_task] No match found in boundary events, checking normal outgoing flows")
 
             # 3. Find the next element based on the outgoing id
             if not current_element.outgoing:
                 # No outgoing edges, can't continue
-                print(f"[find_next_task] No outgoing edges from '{current_element.label}', stopping")
+                logger.debug("[find_next_task] No outgoing edges from '%s', stopping", current_element.label)
                 return -1, None, 0.0
 
             # Starting element can have multiple outgoing edges (e.g., if starting from a gateway)
             # But intermediate elements should have exactly 1
             if not is_first_iteration and len(current_element.outgoing) != 1:
                 # A task should have exactly 1 outgoing element
-                print(f"[find_next_task] Intermediate element has {len(current_element.outgoing)} outgoing edges (expected 1), stopping")
+                logger.debug("[find_next_task] Intermediate element has %d outgoing edges (expected 1), stopping", len(current_element.outgoing))
                 return -1, None, 0.0
 
             # If starting element has multiple outgoing edges, check all paths
             if is_first_iteration and len(current_element.outgoing) > 1:
-                print(f"[find_next_task] Starting element has {len(current_element.outgoing)} outgoing edges, checking all paths")
+                logger.debug("[find_next_task] Starting element has %d outgoing edges, checking all paths", len(current_element.outgoing))
                 for outgoing_flow_id in current_element.outgoing:
-                    print(f"[find_next_task] Trying flow ID: {outgoing_flow_id}")
+                    logger.debug("[find_next_task] Trying flow ID: %s", outgoing_flow_id)
                     # Try to find a match in this path
                     result = self._search_task_in_path(outgoing_flow_id, pool_for_element, task_label, match_threshold, max_distance, visit_count + 1)
                     if result[1] is not None:  # Found a match
                         return result
                 # No match found in any path
-                print(f"[find_next_task] No match found in any outgoing path")
+                logger.debug("[find_next_task] No match found in any outgoing path")
                 return -1, None, 0.0
 
             is_first_iteration = False
 
             # Get the first (and only) outgoing flow id
             outgoing_flow_id = current_element.outgoing[0]
-            print(f"[find_next_task] Following flow ID: {outgoing_flow_id}")
+            logger.debug("[find_next_task] Following flow ID: %s", outgoing_flow_id)
 
             # Find the flow in the pool's flows
             target_element_id = None
@@ -308,10 +311,10 @@ class Bpmn:
 
             if not target_element_id:
                 # Flow not found
-                print(f"[find_next_task] Flow '{outgoing_flow_id}' not found in pool flows, stopping")
+                logger.debug("[find_next_task] Flow '%s' not found in pool flows, stopping", outgoing_flow_id)
                 return -1, None, 0.0
 
-            print(f"[find_next_task] Flow targets element ID: {target_element_id}")
+            logger.debug("[find_next_task] Flow targets element ID: %s", target_element_id)
 
             # Find the target element
             next_element = None
@@ -322,31 +325,31 @@ class Bpmn:
 
             if not next_element:
                 # Target element not found
-                print(f"[find_next_task] Target element '{target_element_id}' not found, stopping")
+                logger.debug("[find_next_task] Target element '%s' not found, stopping", target_element_id)
                 return -1, None, 0.0
 
             # 3. Increment visit count
             visit_count += 1
-            print(f"[find_next_task] Visit {visit_count}: Found element '{next_element.label}' (type: {next_element.name})")
+            logger.debug("[find_next_task] Visit %d: Found element '%s' (type: %s)", visit_count, next_element.label, next_element.name)
 
             # 4. Check if element matches using label similarity
             if next_element.label:
                 similarity_matrix = create_similarity_matrix([task_label], [next_element.label])
                 similarity_score = similarity_matrix[0, 0].item()
 
-                print(f"[find_next_task] Comparing '{next_element.label}' with '{task_label}': {similarity_score:.3f}")
+                logger.debug("[find_next_task] Comparing '%s' with '%s': %.3f", next_element.label, task_label, similarity_score)
 
                 if similarity_score >= match_threshold:
-                    print(f"[find_next_task] MATCH! Score {similarity_score:.3f} >= threshold {match_threshold}")
+                    logger.debug("[find_next_task] MATCH! Score %.3f >= threshold %.3f", similarity_score, match_threshold)
                     return visit_count, next_element, similarity_score
                 else:
-                    print(f"[find_next_task] No match (score {similarity_score:.3f} < threshold {match_threshold})")
+                    logger.debug("[find_next_task] No match (score %.3f < threshold %.3f)", similarity_score, match_threshold)
             else:
-                print(f"[find_next_task] Element has no label, skipping comparison")
+                logger.debug("[find_next_task] Element has no label, skipping comparison")
 
             # 5. If visit count and max_distance are equal, stop
             if visit_count >= max_distance:
-                print(f"[find_next_task] Reached max_distance ({max_distance}), stopping")
+                logger.debug("[find_next_task] Reached max_distance (%d), stopping", max_distance)
                 return -1, None, 0.0
 
             # 6. Continue with next element
@@ -362,28 +365,28 @@ class Bpmn:
         # Check gateway type
         gateway_type_match = normalized_gateway_type in gateway.name.lower()
         if not gateway_type_match:
-            print(f"[_check_gateway_match] Gateway type mismatch: expected '{normalized_gateway_type}', got '{gateway.name}'")
+            logger.debug("[_check_gateway_match] Gateway type mismatch: expected '%s', got '%s'", normalized_gateway_type, gateway.name)
             return False
 
         # Check number of outgoing edges
         num_outgoing = len(gateway.outgoing)
         outcomes_match = num_outgoing == expected_outcomes
         if not outcomes_match:
-            print(f"[_check_gateway_match] Outcomes mismatch: expected {expected_outcomes}, got {num_outgoing}")
+            logger.debug("[_check_gateway_match] Outcomes mismatch: expected %d, got %d", expected_outcomes, num_outgoing)
             return False
 
         # Check gateway label if required
         if check_gateway_label:
             if not gateway.label:
-                print(f"[_check_gateway_match] Gateway has no label, but label check is required")
+                logger.debug("[_check_gateway_match] Gateway has no label, but label check is required")
                 return False
 
             similarity_matrix = create_similarity_matrix([gateway_label], [gateway.label])
             label_score = similarity_matrix[0, 0].item()
-            print(f"[_check_gateway_match] Gateway label similarity: '{gateway.label}' vs '{gateway_label}' = {label_score:.3f}")
+            logger.debug("[_check_gateway_match] Gateway label similarity: '%s' vs '%s' = %.3f", gateway.label, gateway_label, label_score)
 
             if label_score < match_threshold:
-                print(f"[_check_gateway_match] Gateway label score {label_score:.3f} < threshold {match_threshold}")
+                logger.debug("[_check_gateway_match] Gateway label score %.3f < threshold %.3f", label_score, match_threshold)
                 return False
 
         # Check outcome labels if required
@@ -396,12 +399,12 @@ class Bpmn:
                         flow_labels.append(flow.label)
                         break
 
-            print(f"[_check_gateway_match] Gateway outgoing flow labels: {flow_labels}")
-            print(f"[_check_gateway_match] Expected outcome labels: {outcome_labels}")
+            logger.debug("[_check_gateway_match] Gateway outgoing flow labels: %s", flow_labels)
+            logger.debug("[_check_gateway_match] Expected outcome labels: %s", outcome_labels)
 
             # Check if we have the right number of flow labels
             if len(flow_labels) != len(outcome_labels):
-                print(f"[_check_gateway_match] Number of flow labels ({len(flow_labels)}) != expected ({len(outcome_labels)})")
+                logger.debug("[_check_gateway_match] Number of flow labels (%d) != expected (%d)", len(flow_labels), len(outcome_labels))
                 return False
 
             # Check if all expected outcome labels match (order doesn't matter)
@@ -411,7 +414,7 @@ class Bpmn:
             for i, expected_label in enumerate(outcome_labels):
                 # If expected label is empty, automatically accept it (don't check)
                 if not expected_label or expected_label.strip() == "":
-                    print(f"[_check_gateway_match] Outcome {i} has empty label, accepting without matching")
+                    logger.debug("[_check_gateway_match] Outcome %d has empty label, accepting without matching", i)
                     # Still consume one flow slot
                     for j in range(len(flow_labels)):
                         if j not in matched_flow_indices:
@@ -428,7 +431,7 @@ class Bpmn:
                     # Compare with similarity
                     similarity_matrix = create_similarity_matrix([expected_label], [flow_label])
                     score = similarity_matrix[0, 0].item()
-                    print(f"[_check_gateway_match] Comparing outcome '{expected_label}' with flow '{flow_label}': {score:.3f}")
+                    logger.debug("[_check_gateway_match] Comparing outcome '%s' with flow '%s': %.3f", expected_label, flow_label, score)
 
                     if score >= match_threshold:
                         matched_flow_indices.add(j)
@@ -436,10 +439,10 @@ class Bpmn:
                         break
 
                 if not found_match:
-                    print(f"[_check_gateway_match] Could not find match for expected outcome '{expected_label}'")
+                    logger.debug("[_check_gateway_match] Could not find match for expected outcome '%s'", expected_label)
                     return False
 
-        print(f"[_check_gateway_match] Gateway MATCHES all criteria!")
+        logger.debug("[_check_gateway_match] Gateway MATCHES all criteria!")
         return True
 
     def find_next_gateway(self, starting_element_id: str, gateway_type: str, expected_outcomes: int, max_distance: int = 2, gateway_label: str = "", outcome_labels: list[str] | None = None, check_gateway_label: bool = False, check_outcome_labels: bool = False, match_threshold: float = 0.8) -> tuple[int, PoolElement | None, float]:
@@ -459,10 +462,10 @@ class Bpmn:
         if outcome_labels is None:
             outcome_labels = []
 
-        print(f"\n[find_next_gateway] Starting search from element ID: {starting_element_id}")
-        print(f"[find_next_gateway] Looking for GATEWAY: type={gateway_type}, expected_outcomes={expected_outcomes} (max_distance={max_distance})")
-        print(f"[find_next_gateway] Check gateway label: {check_gateway_label} ('{gateway_label}')")
-        print(f"[find_next_gateway] Check outcome labels: {check_outcome_labels} ({outcome_labels})")
+        logger.debug("[find_next_gateway] Starting search from element ID: %s", starting_element_id)
+        logger.debug("[find_next_gateway] Looking for GATEWAY: type=%s, expected_outcomes=%d (max_distance=%d)", gateway_type, expected_outcomes, max_distance)
+        logger.debug("[find_next_gateway] Check gateway label: %s ('%s')", check_gateway_label, gateway_label)
+        logger.debug("[find_next_gateway] Check outcome labels: %s (%s)", check_outcome_labels, outcome_labels)
 
         # Map gateway type aliases to BPMN names
         gateway_type_mapping = {
@@ -478,7 +481,7 @@ class Bpmn:
         }
 
         normalized_gateway_type = gateway_type_mapping.get(gateway_type.lower(), gateway_type.lower())
-        print(f"[find_next_gateway] Normalized gateway type: '{normalized_gateway_type}'")
+        logger.debug("[find_next_gateway] Normalized gateway type: '%s'", normalized_gateway_type)
 
         # 1. Find the exact starting element
         starting_element: PoolElement | None = None
@@ -496,9 +499,9 @@ class Bpmn:
         if not starting_element or not pool_for_element:
             raise ValueError(f"Starting element with id '{starting_element_id}' not found")
 
-        print(f"[find_next_gateway] Starting element: '{starting_element.label}' (ID: {starting_element.id})")
-        print(f"[find_next_gateway] Outgoing connections: {starting_element.outgoing}")
-        print(f"[find_next_gateway] Boundary events: {starting_element.boundary_events}")
+        logger.debug("[find_next_gateway] Starting element: '%s' (ID: %s)", starting_element.label, starting_element.id)
+        logger.debug("[find_next_gateway] Outgoing connections: %s", starting_element.outgoing)
+        logger.debug("[find_next_gateway] Boundary events: %s", starting_element.boundary_events)
 
         current_element = starting_element
         visit_count = 0
@@ -507,7 +510,7 @@ class Bpmn:
         while visit_count < max_distance:
             # 2. Check boundary events first (only from starting element)
             if visit_count == 0 and current_element.boundary_events:
-                print(f"[find_next_gateway] Element has {len(current_element.boundary_events)} boundary event(s), checking them first")
+                logger.debug("[find_next_gateway] Element has %d boundary event(s), checking them first", len(current_element.boundary_events))
                 for boundary_event_id in current_element.boundary_events:
                     # Find the boundary event element
                     boundary_event = None
@@ -517,16 +520,16 @@ class Bpmn:
                             break
 
                     if not boundary_event:
-                        print(f"[find_next_gateway] Boundary event '{boundary_event_id}' not found, skipping")
+                        logger.debug("[find_next_gateway] Boundary event '%s' not found, skipping", boundary_event_id)
                         continue
 
-                    print(f"[find_next_gateway] Checking boundary event '{boundary_event.label}' (ID: {boundary_event_id})")
+                    logger.debug("[find_next_gateway] Checking boundary event '%s' (ID: %s)", boundary_event.label, boundary_event_id)
 
                     # Check if the boundary event itself is a gateway (unlikely but possible)
                     is_gateway = "gateway" in boundary_event.name.lower()
                     if is_gateway:
                         if self._check_gateway_match(boundary_event, normalized_gateway_type, expected_outcomes, pool_for_element, gateway_label, outcome_labels, check_gateway_label, check_outcome_labels, match_threshold):
-                            print(f"[find_next_gateway] MATCH on boundary event gateway!")
+                            logger.debug("[find_next_gateway] MATCH on boundary event gateway!")
                             return 1, boundary_event, 1.0
 
                     # Check the boundary event's outgoing paths for gateways
@@ -552,27 +555,27 @@ class Bpmn:
                             if not next_element:
                                 continue
 
-                            print(f"[find_next_gateway] Found element after boundary event: '{next_element.label}' (type: {next_element.name})")
+                            logger.debug("[find_next_gateway] Found element after boundary event: '%s' (type: %s)", next_element.label, next_element.name)
 
                             # Check if this is the gateway we're looking for
                             is_gateway = "gateway" in next_element.name.lower()
                             if is_gateway:
                                 if self._check_gateway_match(next_element, normalized_gateway_type, expected_outcomes, pool_for_element, gateway_label, outcome_labels, check_gateway_label, check_outcome_labels, match_threshold):
-                                    print(f"[find_next_gateway] MATCH on gateway after boundary event!")
+                                    logger.debug("[find_next_gateway] MATCH on gateway after boundary event!")
                                     return 1, next_element, 1.0
 
-                print(f"[find_next_gateway] No match found in boundary events, checking normal outgoing flows")
+                logger.debug("[find_next_gateway] No match found in boundary events, checking normal outgoing flows")
 
             # 3. Check all outgoing flows from current element
             if not current_element.outgoing:
-                print(f"[find_next_gateway] No outgoing edges from '{current_element.label}', stopping")
+                logger.debug("[find_next_gateway] No outgoing edges from '%s', stopping", current_element.label)
                 return -1, None, 0.0
 
-            print(f"[find_next_gateway] Element has {len(current_element.outgoing)} outgoing edge(s)")
+            logger.debug("[find_next_gateway] Element has %d outgoing edge(s)", len(current_element.outgoing))
 
             # For each outgoing flow, check the target element
             for outgoing_flow_id in current_element.outgoing:
-                print(f"[find_next_gateway] Checking flow ID: {outgoing_flow_id}")
+                logger.debug("[find_next_gateway] Checking flow ID: %s", outgoing_flow_id)
 
                 # Find the flow in the pool's flows
                 target_element_id = None
@@ -582,10 +585,10 @@ class Bpmn:
                         break
 
                 if not target_element_id:
-                    print(f"[find_next_gateway] Flow '{outgoing_flow_id}' not found, skipping")
+                    logger.debug("[find_next_gateway] Flow '%s' not found, skipping", outgoing_flow_id)
                     continue
 
-                print(f"[find_next_gateway] Flow targets element ID: {target_element_id}")
+                logger.debug("[find_next_gateway] Flow targets element ID: %s", target_element_id)
 
                 # Find the target element
                 next_element = None
@@ -595,19 +598,19 @@ class Bpmn:
                         break
 
                 if not next_element:
-                    print(f"[find_next_gateway] Target element '{target_element_id}' not found, skipping")
+                    logger.debug("[find_next_gateway] Target element '%s' not found, skipping", target_element_id)
                     continue
 
-                print(f"[find_next_gateway] Found element '{next_element.label}' (type: {next_element.name})")
+                logger.debug("[find_next_gateway] Found element '%s' (type: %s)", next_element.label, next_element.name)
 
                 # Check if this element is a gateway with matching criteria
                 is_gateway = "gateway" in next_element.name.lower()
-                print(f"[find_next_gateway] Is gateway: {is_gateway}")
+                logger.debug("[find_next_gateway] Is gateway: %s", is_gateway)
 
                 if is_gateway:
                     if self._check_gateway_match(next_element, normalized_gateway_type, expected_outcomes, pool_for_element, gateway_label, outcome_labels, check_gateway_label, check_outcome_labels, match_threshold):
                         # Match found at visit_count + 1 (since we're looking at next elements)
-                        print(f"[find_next_gateway] GATEWAY MATCH! Found at distance {visit_count + 1}")
+                        logger.debug("[find_next_gateway] GATEWAY MATCH! Found at distance %d", visit_count + 1)
                         return visit_count + 1, next_element, 1.0
 
             # If no match found in immediate neighbors, we need to traverse deeper
@@ -619,7 +622,7 @@ class Bpmn:
                 visit_count += 1
 
                 if visit_count >= max_distance:
-                    print(f"[find_next_gateway] Reached max_distance ({max_distance}), stopping")
+                    logger.debug("[find_next_gateway] Reached max_distance (%d), stopping", max_distance)
                     return -1, None, 0.0
 
                 # Only continue traversal if we're at a gateway or have exactly 1 outgoing edge
@@ -636,12 +639,12 @@ class Bpmn:
                         for element in pool_for_element.elements:
                             if element.id == target_element_id:
                                 current_element = element
-                                print(f"[find_next_gateway] Moving to next element: '{current_element.label}' (type: {current_element.name})")
+                                logger.debug("[find_next_gateway] Moving to next element: '%s' (type: %s)", current_element.label, current_element.name)
                                 break
                     else:
                         return -1, None, 0.0
                 else:
-                    print(f"[find_next_gateway] Current element is not a gateway and has {len(current_element.outgoing)} outgoing edges, stopping")
+                    logger.debug("[find_next_gateway] Current element is not a gateway and has %d outgoing edges, stopping", len(current_element.outgoing))
                     return -1, None, 0.0
             else:
                 return -1, None, 0.0

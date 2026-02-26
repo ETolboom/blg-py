@@ -1,3 +1,4 @@
+import logging
 from typing import ClassVar
 
 from checks import (
@@ -12,6 +13,8 @@ from checks import (
 from bpmn.bpmn import Bpmn
 from utils import get_elements_by_type
 from utils.similarity import match_labels
+
+logger = logging.getLogger(__name__)
 
 
 class PoolLaneCheck(Check):
@@ -185,10 +188,10 @@ class PoolLaneCheck(Check):
             get_elements_by_type(self.model_xml, "process")
             get_elements_by_type(self.model_xml, "lane")
         except TypeError as e:
-            print(f"Check {self.name} is not applicable: {e}")
+            logger.debug("Check '%s' is not applicable: %s", self.name, e)
             return False
         except ValueError as e:
-            print(f"Check {self.name} is not applicable: {e}")
+            logger.debug("Check '%s' is not applicable: %s", self.name, e)
             return False
 
         return True

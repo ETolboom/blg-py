@@ -1,6 +1,9 @@
+import logging
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+
+logger = logging.getLogger(__name__)
 
 from checks import CheckComplexity, CheckFormInput, CheckInputType
 from checks.implementations.behavioral import BehavioralGroupEvaluator, GroupEvaluationResult
@@ -158,7 +161,7 @@ async def add_behavioral_group_to_rubric(group_id: str, group: BehavioralRuleGro
             index = next((i for i, c in enumerate(rubric.criteria)
                           if c.id == rule_id), -1)
             if index != -1:
-                print(f"[Consumption] Removing template '{rule_id}' from rubric")
+                logger.info("Removing template '%s' from rubric (consumed by group)", rule_id)
                 del rubric.criteria[index]
 
         # Use "group:" prefix to distinguish from individual templates in rubric
