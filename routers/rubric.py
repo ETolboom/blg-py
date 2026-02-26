@@ -38,7 +38,7 @@ async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric, request:
             # Since we don't ask for inputs during onboarding
             # we assume that inputs are [] so the algorithm tries to
             # do a first pass / a best effort analysis.
-            result = manager.get_check(algorithm).analyze()
+            result = manager.get_check(algorithm).analyze(inputs=None)
             parsed_algorithms.append(
                 RubricCriterion(
                     id=result.id,
