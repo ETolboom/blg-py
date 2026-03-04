@@ -1,7 +1,7 @@
 import logging
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile
 
 logger = logging.getLogger(__name__)
 
@@ -191,20 +191,73 @@ async def update_criteria(
         )
 
 
-@router.post("/rubric/description")
-async def update_rubric_description(req: Request) -> None:
-    rubric = req.app.state.rubric
+@router.post("/rubric/supplement")
+async def upload_supplement(file: UploadFile, request: Request) -> dict:
+    """Upload a supplement PDF for the rubric."""
+    base_path = request.app.state.base_path
 
-    description = await req.body()
-    if not description:
-        raise HTTPException(status_code=400, detail="request body is missing")
+    # Validate file extension
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(
+            status_code=400, detail="File must be a PDF document"
+        )
 
-    description = description.decode("utf-8")
+    # Validate content type
+    if file.content_type != "application/pdf":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid content type: {file.content_type}. Expected application/pdf",
+        )
 
-    if rubric and rubric.assignment:
-        rubric.assignment.description = description
+    # Read and validate file size (10MB limit)
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:  # 10MB
+        raise HTTPException(
+            status_code=400, detail="PDF file size must not exceed 10MB"
+        )
 
-    save_rubric(req, rubric)
+    # Save to disk
+    supplement_path = os.path.join(base_path, "supplement.pdf")
+    with open(supplement_path, "wb") as f:
+        f.write(content)
+
+    logger.info("Supplement PDF uploaded successfully")
+
+    return {"message": "Supplement uploaded successfully", "filename": "supplement.pdf"}
+
+
+@router.get("/rubric/supplement")
+async def get_supplement(request: Request) -> Response:
+    """Retrieve the supplement PDF if it exists."""
+    base_path = request.app.state.base_path
+    supplement_path = os.path.join(base_path, "supplement.pdf")
+
+    if not os.path.exists(supplement_path):
+        raise HTTPException(status_code=404, detail="No supplement PDF found")
+
+    with open(supplement_path, "rb") as f:
+        content = f.read()
+
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "inline; filename=supplement.pdf"},
+    )
+
+
+@router.delete("/rubric/supplement")
+async def delete_supplement(request: Request) -> dict:
+    """Delete the supplement PDF."""
+    base_path = request.app.state.base_path
+    supplement_path = os.path.join(base_path, "supplement.pdf")
+
+    if not os.path.exists(supplement_path):
+        raise HTTPException(status_code=404, detail="No supplement PDF found")
+
+    os.remove(supplement_path)
+    logger.info("Supplement PDF deleted")
+
+    return {"message": "Supplement deleted successfully"}
 
 
 @router.delete("/rubric/criteria/{criterion_id}")

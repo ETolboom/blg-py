@@ -8,10 +8,8 @@ from checks import CheckResult
 
 
 class Assignment(BaseModel):
-    # Set default values in case we want to onboard without
-    # a reference model/description
+    # Set default value in case we want to onboard without a reference model
     reference_xml: str | None = ""
-    description: str | None = ""
 
 
 class RubricCriterion(CheckResult):
