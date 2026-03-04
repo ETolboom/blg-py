@@ -93,7 +93,8 @@ if __name__ == "__main__":
 
     # Load checks during startup (dependencies loaded automatically)
     try:
-        checks.manager.load_checks()
+        registry = CheckRegistry()
+        registry.load()
     except Exception as e:
         print(f"Could not load checks: {e}")
         sys.exit(1)

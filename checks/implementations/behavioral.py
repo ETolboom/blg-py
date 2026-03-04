@@ -1,6 +1,6 @@
+from __future__ import annotations
 import logging
 from typing import ClassVar, Optional
-from __future__ import annotations
 
 from typing import ClassVar
 from dataclasses import dataclass, field
