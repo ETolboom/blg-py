@@ -75,10 +75,10 @@ class CheckFormInput(BaseModel):
         return v
 
 
-class CheckComplexity(str, Enum):
-    SIMPLE = "Quality Checks (Model-Agnostic)"
-    CONFIGURABLE = "Simple (Model-Dependent)"
-    COMPLEX = "Complex (Model-Dependent)"
+class CheckComplexity(Enum):
+    SIMPLE = 0
+    CONFIGURABLE = 1
+    COMPLEX = 2
 
 class CheckResult(BaseModel):
     """This class describes the format in which the algorithm is presented."""
