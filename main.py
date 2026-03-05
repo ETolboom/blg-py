@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
 from checks.manager import CheckRegistry
@@ -72,12 +73,19 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# Register routers
+# Register API routers — must come before the frontend mount so /api/* routes take priority
 app.include_router(submissions.router, prefix="/api", tags=["submissions"])
 app.include_router(rubric.router, prefix="/api", tags=["rubric"])
 app.include_router(checks_router.router, prefix="/api", tags=["checks"])
 app.include_router(behavioral_rules.router, prefix="/api", tags=["behavioral-rules"])
 app.include_router(behavioral_rule_groups.router, prefix="/api", tags=["behavioral-rule-groups"])
+
+# Serve the compiled frontend from static/ if it exists.
+# html=True makes StaticFiles return index.html for any path that doesn't match a
+# real file, which lets the SPA handle client-side routing.
+_FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+if os.path.isdir(_FRONTEND_DIR):
+    app.mount("/", StaticFiles(directory=_FRONTEND_DIR, html=True), name="frontend")
 
 
 if __name__ == "__main__":

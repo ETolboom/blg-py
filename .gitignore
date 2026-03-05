@@ -2,6 +2,7 @@
 cache/
 example/
 target/
+static/
 __pycache__
 .DS_Store
 *.so

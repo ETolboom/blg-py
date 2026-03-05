@@ -108,12 +108,29 @@ The server starts at `http://127.0.0.1:8000`. The `example/` directory is used a
 
 Swap `example` for any other directory that contains the expected layout.
 
+### Bundling the front-end
+
+The back-end will automatically serve the compiled [blg-web](https://github.com/ETolboom/blg-web) front-end if a `static/` directory exists at the project root. All API routes (`/api/*`) take priority; everything else falls back to `index.html` so SPA client-side routing works correctly.
+
+```bash
+# 1. Build the front-end (from the blg-web repository)
+npm run build          # output lands in blg-web/dist/
+
+# 2. Copy the build output into blg-py/static/
+cp -r ../blg-web/dist/ ./static/
+
+# 3. Start the server as normal — the UI is now served at http://127.0.0.1:8000
+python main.py example
+```
+
+The `static/` directory is listed in `.gitignore` and is not checked in to this repository.
+
 ---
 
 ## API Overview
 
 | Method | Path | Description |
-|---|---|---|
+|--------|------|-------------|
 | `GET` | `/api/rubric` | Fetch the current rubric |
 | `POST` | `/api/rubric` | Create a rubric via onboarding payload |
 | `DELETE` | `/api/rubric/criteria/{id}` | Remove a rubric criterion |
