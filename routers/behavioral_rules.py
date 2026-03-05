@@ -101,13 +101,13 @@ async def delete_rule(rule_id: str, rule_manager: BehavioralRuleManager = Depend
 
 
 @router.post("/behavioral-rules/{rule_id}/validate")
-async def validate_rule(rule_id: str, request: Request, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> dict:
+async def validate_rule(rule_id: str, request: Request, rule_manager: BehavioralRuleManager = Depends(get_rule_manager), filename: str | None = None) -> dict:
     """
-    Validate a behavioral rule against the current rubric's reference BPMN.
-    This runs the behavioral analysis and updates the rubric entry.
+    Validate a behavioral rule against a BPMN model.
 
-    If the rule is part of any groups, those groups will also be
-    automatically re-evaluated and their rubric entries updated.
+    When `filename` is provided, evaluates against that submission (read-only, no rubric changes).
+    When omitted, evaluates against the reference BPMN and updates the rubric entry and any
+    affected groups.
     """
     base_path = request.app.state.base_path
     rubric = request.app.state.rubric
@@ -119,12 +119,20 @@ async def validate_rule(rule_id: str, request: Request, rule_manager: Behavioral
         if rule is None:
             raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")
 
-        # Ensure we have a rubric with reference XML
-        if not rubric or not rubric.assignment or not rubric.assignment.reference_xml:
-            raise HTTPException(
-                status_code=400,
-                detail="No reference BPMN model loaded. Please load a rubric first."
-            )
+        # Resolve the BPMN XML to evaluate against
+        if filename is not None:
+            submission_path = os.path.join(base_path, "submissions", filename)
+            if not os.path.exists(submission_path):
+                raise HTTPException(status_code=404, detail=f"Submission '{filename}' not found")
+            with open(submission_path, encoding="utf-8") as f:
+                model_xml = f.read()
+        else:
+            if not rubric or not rubric.assignment or not rubric.assignment.reference_xml:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No reference BPMN model loaded. Please load a rubric first."
+                )
+            model_xml = rubric.assignment.reference_xml
 
         # Convert rule to WorkflowData
         workflow_data = WorkflowData(
@@ -133,7 +141,7 @@ async def validate_rule(rule_id: str, request: Request, rule_manager: Behavioral
         )
 
         # Run behavioral analysis
-        checker = BehavioralRuleCheck(model_xml=rubric.assignment.reference_xml)
+        checker = BehavioralRuleCheck(model_xml=model_xml)
         result = checker.check_behavior(workflow=workflow_data)
 
         # Collect problematic BPMN element IDs
@@ -150,74 +158,69 @@ async def validate_rule(rule_id: str, request: Request, rule_manager: Behavioral
         # Calculate earned points
         earned_points = result.earned_points
 
-        # Update the rubric entry if it exists (individual rule)
-        criterion_index = next(
-            (i for i, criterion in enumerate(rubric.criteria) if criterion.id == rule_id),
-            -1
-        )
-
-        if criterion_index != -1:
-            # Update existing criterion
-            rubric.criteria[criterion_index].default_points = rule.maxPoints
-            rubric.criteria[criterion_index].fulfilled = earned_points > 0
-            rubric.criteria[criterion_index].confidence = result.confidence
-            rubric.criteria[criterion_index].problematic_elements = problematic_elements
-
-            if round(earned_points, 2) != round(rule.maxPoints, 2):
-                rubric.criteria[criterion_index].score = earned_points
-            else:
-                rubric.criteria[criterion_index].score = None
-
         affected_groups = []
-        all_groups = rule_manager.list_groups()
 
-        for group_info in all_groups:
-            if rule_id in group_info.get('rule_ids', []):
-                # This group contains the updated rule - re-evaluate it
-                group = rule_manager.get_group(group_info['group_id'])
-                if group is not None:
-                    # Re-evaluate the group
-                    evaluator = BehavioralGroupEvaluator(model_xml=rubric.assignment.reference_xml, rule_manager=rule_manager)
-                    group_result = evaluator.evaluate_group(group)
+        if filename is None:
+            # Update the rubric entry if it exists (individual rule)
+            criterion_index = next(
+                (i for i, criterion in enumerate(rubric.criteria) if criterion.id == rule_id),
+                -1
+            )
 
-                    # Save evaluation results to group file
-                    rule_manager.update_group_evaluation(group.group_id, group_result)
+            if criterion_index != -1:
+                rubric.criteria[criterion_index].default_points = rule.maxPoints
+                rubric.criteria[criterion_index].fulfilled = earned_points > 0
+                rubric.criteria[criterion_index].confidence = result.confidence
+                rubric.criteria[criterion_index].problematic_elements = problematic_elements
 
-                    # Find and update this group's rubric entry (search with "group:" prefix)
-                    prefixed_group_id = f"group:{group.group_id}"
-                    group_criterion_index = next(
-                        (i for i, criterion in enumerate(rubric.criteria) if criterion.id == prefixed_group_id),
-                        -1
-                    )
+                if round(earned_points, 2) != round(rule.maxPoints, 2):
+                    rubric.criteria[criterion_index].score = earned_points
+                else:
+                    rubric.criteria[criterion_index].score = None
 
-                    if group_criterion_index != -1:
-                        # Update the group's rubric entry
-                        rubric.criteria[group_criterion_index].fulfilled = group_result.fulfilled
-                        rubric.criteria[group_criterion_index].confidence = group_result.overall_confidence
-                        rubric.criteria[group_criterion_index].problematic_elements = group_result.problematic_elements
+            all_groups = rule_manager.list_groups()
 
-                        if round(group_result.earned_points, 2) != group.maxPoints:
-                            rubric.criteria[group_criterion_index].score = group_result.earned_points
-                        else:
-                            rubric.criteria[group_criterion_index].score = None
+            for group_info in all_groups:
+                if rule_id in group_info.get('rule_ids', []):
+                    group = rule_manager.get_group(group_info['group_id'])
+                    if group is not None:
+                        evaluator = BehavioralGroupEvaluator(model_xml=rubric.assignment.reference_xml, rule_manager=rule_manager)
+                        group_result = evaluator.evaluate_group(group)
 
-                        affected_groups.append({
-                            "group_id": group.group_id,
-                            "group_name": group.name,
-                            "updated_points": group_result.earned_points,
-                            "best_rule": group_result.best_rule_id
-                        })
+                        rule_manager.update_group_evaluation(group.group_id, group_result)
 
-        # Save updated rubric to disk (includes both rule and group updates)
-        if criterion_index != -1 or affected_groups:
-            # Update app state
-            request.app.state.rubric = rubric
-            request.app.state.submission_service.rubric = rubric
+                        prefixed_group_id = f"group:{group.group_id}"
+                        group_criterion_index = next(
+                            (i for i, criterion in enumerate(rubric.criteria) if criterion.id == prefixed_group_id),
+                            -1
+                        )
 
-            with open(os.path.join(base_path, "rubric.json"), "w") as f:
-                f.write(rubric.to_disk_json())
+                        if group_criterion_index != -1:
+                            rubric.criteria[group_criterion_index].fulfilled = group_result.fulfilled
+                            rubric.criteria[group_criterion_index].confidence = group_result.overall_confidence
+                            rubric.criteria[group_criterion_index].problematic_elements = group_result.problematic_elements
 
-            request.app.state.submission_service.invalidate_all_results()
+                            if round(group_result.earned_points, 2) != group.maxPoints:
+                                rubric.criteria[group_criterion_index].score = group_result.earned_points
+                            else:
+                                rubric.criteria[group_criterion_index].score = None
+
+                            affected_groups.append({
+                                "group_id": group.group_id,
+                                "group_name": group.name,
+                                "updated_points": group_result.earned_points,
+                                "best_rule": group_result.best_rule_id
+                            })
+
+            # Save updated rubric to disk (includes both rule and group updates)
+            if criterion_index != -1 or affected_groups:
+                request.app.state.rubric = rubric
+                request.app.state.submission_service.rubric = rubric
+
+                with open(os.path.join(base_path, "rubric.json"), "w") as f:
+                    f.write(rubric.to_disk_json())
+
+                request.app.state.submission_service.invalidate_all_results()
 
         # Return validation results (including affected groups)
         return {
@@ -253,4 +256,4 @@ async def validate_rule(rule_id: str, request: Request, rule_manager: Behavioral
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"{str(e)}")

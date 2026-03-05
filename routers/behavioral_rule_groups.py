@@ -1,4 +1,5 @@
 import logging
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -8,7 +9,7 @@ from checks import CheckComplexity, CheckFormInput, CheckInputType
 from checks.implementations.behavioral import BehavioralGroupEvaluator, GroupEvaluationResult
 from dependencies import get_rule_manager, save_rubric
 from rubric import RubricCriterion
-from rules.manager import BehavioralRuleGroup, BehavioralRuleManager
+from rules.manager import BehavioralRuleGroup, BehavioralRuleManager, RuleEvaluationSummary
 
 router = APIRouter()
 
@@ -23,12 +24,47 @@ async def list_rule_groups(rule_manager: BehavioralRuleManager = Depends(get_rul
 
 
 @router.get("/behavioral-rule-groups/{group_id}")
-async def get_rule_group(group_id: str, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> BehavioralRuleGroup:
-    """Get specific template group"""
+async def get_rule_group(group_id: str, request: Request, rule_manager: BehavioralRuleManager = Depends(get_rule_manager), filename: str | None = None) -> BehavioralRuleGroup:
+    """
+    Get a specific template group.
+
+    When `filename` is provided, evaluates the group fresh against that submission
+    and returns the group with updated results (read-only, nothing saved to disk).
+    When omitted, returns the stored group data (including the last reference evaluation).
+    """
     try:
         group = rule_manager.get_group(group_id)
         if group is None:
             raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+
+        if filename is not None:
+            base_path = request.app.state.base_path
+            submission_path = os.path.join(base_path, "submissions", filename)
+            if not os.path.exists(submission_path):
+                raise HTTPException(status_code=404, detail=f"Submission '{filename}' not found")
+            with open(submission_path, encoding="utf-8") as f:
+                model_xml = f.read()
+
+            evaluator = BehavioralGroupEvaluator(model_xml=model_xml, rule_manager=rule_manager)
+            result = evaluator.evaluate_group(group)
+
+            group.earned_points = result.earned_points
+            group.best_rule_id = result.best_rule_id
+            group.fulfilled = result.fulfilled
+            group.confidence = result.overall_confidence
+            group.problematic_elements = result.problematic_elements
+            group.rule_results = [
+                RuleEvaluationSummary(
+                    rule_id=r.rule_id,
+                    rule_name=r.rule_name,
+                    description=r.description,
+                    earned_points=r.earned_points,
+                    confidence=r.confidence,
+                    success=r.success,
+                )
+                for r in result.rule_results
+            ]
+
         return group
     except HTTPException:
         raise
@@ -110,24 +146,74 @@ async def delete_rule_group(group_id: str, rule_manager: BehavioralRuleManager =
         raise HTTPException(status_code=500, detail=f"Failed to delete group: {str(e)}")
 
 
-@router.post("/rubric/criteria/behavioral-group/analyze")
-def analyze_behavioral_group(group: BehavioralRuleGroup, request: Request, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> GroupEvaluationResult:
+@router.post("/behavioral-rule-groups/{group_id}/validate")
+async def validate_rule_group(group_id: str, request: Request, rule_manager: BehavioralRuleManager = Depends(get_rule_manager), filename: str | None = None) -> GroupEvaluationResult:
     """
-    Test evaluate a template group against reference model.
-    Results are automatically saved to the group's JSON file.
+    Validate a behavioral rule group against a BPMN model.
+
+    When `filename` is provided, evaluates against that submission (read-only, results not saved).
+    When omitted, evaluates against the reference BPMN and saves results to the group's JSON file.
     """
     rubric = request.app.state.rubric
+    base_path = request.app.state.base_path
 
     try:
-        if not rubric or not rubric.assignment or not rubric.assignment.reference_xml:
-            raise HTTPException(status_code=400, detail="No reference model loaded")
+        group = rule_manager.get_group(group_id)
+        if group is None:
+            raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
 
-        # Evaluate the group
-        evaluator = BehavioralGroupEvaluator(model_xml=rubric.assignment.reference_xml, rule_manager=rule_manager)
+        if filename is not None:
+            submission_path = os.path.join(base_path, "submissions", filename)
+            if not os.path.exists(submission_path):
+                raise HTTPException(status_code=404, detail=f"Submission '{filename}' not found")
+            with open(submission_path, encoding="utf-8") as f:
+                model_xml = f.read()
+        else:
+            if not rubric or not rubric.assignment or not rubric.assignment.reference_xml:
+                raise HTTPException(status_code=400, detail="No reference model loaded")
+            model_xml = rubric.assignment.reference_xml
+
+        evaluator = BehavioralGroupEvaluator(model_xml=model_xml, rule_manager=rule_manager)
         result = evaluator.evaluate_group(group)
 
-        # Save evaluation results to the group file (if it exists on disk)
-        if rule_manager.group_exists(group.group_id):
+        if filename is None:
+            rule_manager.update_group_evaluation(group_id, result)
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Group validation failed: {str(e)}")
+
+
+@router.post("/rubric/criteria/behavioral-group/analyze")
+def analyze_behavioral_group(group: BehavioralRuleGroup, request: Request, rule_manager: BehavioralRuleManager = Depends(get_rule_manager), filename: str | None = None) -> GroupEvaluationResult:
+    """
+    Evaluate a template group against a BPMN model.
+
+    When `filename` is provided, evaluates against that submission (read-only, results not saved).
+    When omitted, evaluates against the reference BPMN and saves results to the group's JSON file.
+    """
+    rubric = request.app.state.rubric
+    base_path = request.app.state.base_path
+
+    try:
+        if filename is not None:
+            submission_path = os.path.join(base_path, "submissions", filename)
+            if not os.path.exists(submission_path):
+                raise HTTPException(status_code=404, detail=f"Submission '{filename}' not found")
+            with open(submission_path, encoding="utf-8") as f:
+                model_xml = f.read()
+        else:
+            if not rubric or not rubric.assignment or not rubric.assignment.reference_xml:
+                raise HTTPException(status_code=400, detail="No reference model loaded")
+            model_xml = rubric.assignment.reference_xml
+
+        evaluator = BehavioralGroupEvaluator(model_xml=model_xml, rule_manager=rule_manager)
+        result = evaluator.evaluate_group(group)
+
+        # Save evaluation results only when evaluating against the reference
+        if filename is None and rule_manager.group_exists(group.group_id):
             rule_manager.update_group_evaluation(group.group_id, result)
 
         return result

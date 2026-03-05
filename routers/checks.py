@@ -62,10 +62,10 @@ async def analyze_submission(
     manager = registry.create_manager(model_xml)
 
     criterion_results: list[SubmissionCriterionResult] = []
-    for algorithm in rubric.criteria:
+    for check in rubric.criteria:
         # Check if this is a behavioral (template-based) criterion
-        if algorithm.check_complexity == CheckComplexity.COMPLEX:
-            criterion_id = algorithm.id
+        if check.check_complexity == CheckComplexity.COMPLEX:
+            criterion_id = check.id
 
             if criterion_id.startswith("group:"):
                 # === GROUP EVALUATION ===
@@ -81,17 +81,14 @@ async def analyze_submission(
                 evaluator = BehavioralGroupEvaluator(model_xml=model_xml, rule_manager=rule_manager)
                 result = evaluator.evaluate_group(group)
 
-                # Save evaluation results to group file
-                rule_manager.update_group_evaluation(group_id, result)
-
                 criterion_results.append(
                     SubmissionCriterionResult(
                         id=criterion_id,
                         fulfilled=result.fulfilled,
-                        inputs=algorithm.input_scheme,
                         confidence=result.overall_confidence,
                         problematic_elements=result.problematic_elements,
                         score=result.earned_points if round(result.earned_points, 2) != group.maxPoints else None,
+                        inputs=check.inputs,
                     )
                 )
             else:
@@ -106,7 +103,20 @@ async def analyze_submission(
 
                 workflow_data = WorkflowData(nodes=rule.nodes, edges=rule.edges)
                 checker = BehavioralRuleCheck(model_xml=model_xml)
-                result = checker.check_behavior(workflow=workflow_data)
+                try:
+                    result = checker.check_behavior(workflow=workflow_data)
+                except Exception:
+                    criterion_results.append(
+                        SubmissionCriterionResult(
+                            id=criterion_id,
+                            fulfilled=False,
+                            confidence=0.0,
+                            problematic_elements=[],
+                            score=None,
+                            inputs=check.inputs,
+                        )
+                    )
+                    continue
 
                 problematic_elements = []
                 for match in result.match_details:
@@ -118,15 +128,15 @@ async def analyze_submission(
                     SubmissionCriterionResult(
                         id=criterion_id,
                         fulfilled=result.earned_points > 0,
-                        inputs=algorithm.input_scheme,  # Keep template_id reference
                         confidence=result.confidence,
                         problematic_elements=problematic_elements,
                         score=result.earned_points if round(result.earned_points, 2) != rule.maxPoints else None,
+                        inputs=check.inputs,
                     )
                 )
         else:
             # Standard check
-            result = manager.get_check(algorithm.id).analyze(inputs=algorithm.inputs)
+            result = manager.get_check(check.id).analyze(inputs=check.inputs)
             criterion_results.append(
                 SubmissionCriterionResult(
                     id=result.id,

@@ -4,7 +4,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from pydantic import BaseModel
 
-from checks import CheckResult
+from checks import CheckFormInput, CheckResult
 
 
 class Assignment(BaseModel):
@@ -23,6 +23,7 @@ class SubmissionCriterionResult(BaseModel):
     fulfilled: bool | None = None
     confidence: float = 0.0
     problematic_elements: list[str] = []
+    inputs: list[CheckFormInput] = []
 
 
 class SubmissionResult(BaseModel):
