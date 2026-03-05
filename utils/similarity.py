@@ -36,6 +36,7 @@ def _get_embedding(label: str) -> torch.Tensor:
 
 
 def _embed(labels: list[str]) -> torch.Tensor:
+    """Stack cached embeddings for a list of labels into a 2-D tensor."""
     return torch.stack([_get_embedding(label) for label in labels])
 
 
@@ -44,6 +45,7 @@ def create_similarity_matrix(
         reference_labels: list[str],
         self_similarity: bool = False,
 ) -> torch.Tensor:
+    """Compute a cosine-similarity matrix between target and reference label embeddings."""
     similarity_matrix = torch.mm(_embed(target_labels), _embed(reference_labels).t())
 
     if self_similarity:
@@ -60,6 +62,7 @@ def match_labels(
         reference: list[str],
         match_threshold: float,
 ) -> list[tuple[int, int]]:
+    """Greedily match target labels to reference labels above the similarity threshold."""
     similarity_matrix = create_similarity_matrix(target, reference)
     ranked_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
 

@@ -40,9 +40,11 @@ class Rubric(BaseModel):
     assignment: Assignment | None
 
     def to_disk_json(self) -> str:
+        """Serialize the rubric to JSON, excluding the reference XML."""
         return self.model_dump_json(exclude={"assignment": {"reference_xml"}})
 
     def to_excel_worksheet(self, workbook: Workbook, filename: str) -> None:
+        """Write rubric criteria and scores as a formatted worksheet in the given workbook."""
         worksheet = workbook.create_sheet(filename)
 
         # Define styles
@@ -112,6 +114,7 @@ class Rubric(BaseModel):
             worksheet.column_dimensions[col_letter].width = width
 
     def to_excel(self, filename: str) -> bytes:
+        """Export the rubric to an Excel workbook and return its raw bytes."""
         excel_buffer = io.BytesIO()
         workbook = Workbook()
 

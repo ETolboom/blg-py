@@ -45,7 +45,7 @@ async def get_rule(rule_id: str, rule_manager: BehavioralRuleManager = Depends(g
 
 @router.post("/behavioral-rules")
 async def create_rule(rule: BehavioralRule, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> BehavioralRule:
-    """Create a new rule rule"""
+    """Create a new behavioral rule."""
     try:
         # Check if rule already exists
         if rule_manager.rule_exists(rule.id):
@@ -63,7 +63,7 @@ async def create_rule(rule: BehavioralRule, rule_manager: BehavioralRuleManager 
 
 @router.put("/behavioral-rules/{rule_id}")
 async def update_rule(rule_id: str, rule: BehavioralRule, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> BehavioralRule:
-    """Update an existing rule rule"""
+    """Update an existing behavioral rule."""
     try:
         # Ensure the rule ID in the URL matches the one in the body
         if rule.id != rule_id:
@@ -88,7 +88,7 @@ async def update_rule(rule_id: str, rule: BehavioralRule, rule_manager: Behavior
 
 @router.delete("/behavioral-rules/{rule_id}")
 async def delete_rule(rule_id: str, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> dict:
-    """Delete a rule rule"""
+    """Delete a behavioral rule by ID."""
     try:
         if not rule_manager.delete_rule(rule_id):
             raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")

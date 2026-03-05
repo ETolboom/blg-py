@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 class CheckRegistry:
     def __init__(self):
+        """Initialize an empty registry."""
         self._check_classes: list[type[Check]] = []
 
     def _load_check_dependencies(self) -> None:
@@ -42,6 +43,7 @@ class CheckRegistry:
         print(f"All check dependencies loaded successfully\n")
 
     def load(self) -> None:
+        """Discover and register all concrete Check subclasses from the implementations directory."""
         implementations_path = Path("checks/implementations")
         if not implementations_path.exists():
             raise FileNotFoundError(
@@ -98,14 +100,17 @@ class CheckRegistry:
         self._load_check_dependencies()
 
     def create_manager(self, model_xml) -> "CheckManager":
+        """Instantiate a CheckManager for the given BPMN XML."""
         return CheckManager(model_xml=model_xml, check_classes=self._check_classes)
 
     def list_checks(self) -> list[dict[str, str | list[CheckFormInput]]]:
+        """Return metadata for all registered checks."""
         return self.create_manager("").list_checks()
 
 
 class CheckManager:
     def __init__(self, model_xml: str, check_classes: list[type[Check]]):
+        """Instantiate all registered checks for the given BPMN XML."""
         self.model_xml: str = model_xml
         self.checks: dict[str, Check] = {}
 
@@ -116,6 +121,7 @@ class CheckManager:
     def list_checks(
         self,
     ) -> list[dict[str, str | list[CheckFormInput]]]:
+        """Return id, name, complexity and input scheme for each registered check."""
         checks = []
         for check in self.checks.values():
             entry: dict[str, str | list[CheckFormInput]] = {
@@ -129,4 +135,5 @@ class CheckManager:
         return checks
 
     def get_check(self, name: str) -> Check:
+        """Return the Check instance for the given check ID."""
         return self.checks[name]

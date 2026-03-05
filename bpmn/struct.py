@@ -59,6 +59,7 @@ class PoolElement:
     visit_count: int = 0
 
     def to_flow_element(self, source_ref: str, target_ref: str) -> FlowElement:
+        """Convert this PoolElement to a FlowElement with the given source and target IDs."""
         return FlowElement(
             id=self.id,
             label=self.label,
@@ -115,6 +116,7 @@ class Pool:
 
 
 def parse_lane_set(lane_set: Element) -> list[LaneElement]:
+    """Parse a BPMN laneSet XML element into a list of LaneElement objects."""
     lanes: list[LaneElement] = []
     for lane in lane_set:
         parsed_lane = LaneElement(id=lane.get("id") or "", name=lane.get("name") or "")

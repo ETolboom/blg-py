@@ -28,6 +28,7 @@ class Node(BaseModel):
 
 @router.get("/checks")
 async def list_checks(registry: CheckRegistry = Depends(get_check_registry)) -> list[dict[str, str | list[CheckFormInput]]]:
+    """Return metadata for all registered checks."""
     return registry.list_checks()
 
 
@@ -39,6 +40,7 @@ async def analyze_submission(
     rule_manager: BehavioralRuleManager = Depends(get_rule_manager),
     submission_service: SubmissionService = Depends(get_submission_service),
 ) -> Rubric:
+    """Analyze a student submission against the rubric and return the composed result."""
     rubric = request.app.state.rubric
 
     if filename == "":
@@ -187,6 +189,7 @@ async def analyze_submission(
 
 @router.post("/checks/analyze/all")
 async def analyze_all(req: Request, registry: CheckRegistry = Depends(get_check_registry)) -> list[Node]:
+    """Return all applicable checks for a given BPMN model, grouped by complexity category."""
     model_xml = await req.body()
     if not model_xml:
         raise HTTPException(status_code=400, detail="request body is missing")

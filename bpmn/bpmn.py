@@ -12,6 +12,7 @@ class Bpmn:
     """BPMN is an internal representation of the BPMN XML model."""
 
     def __init__(self, xml_string: str) -> None:
+        """Parse BPMN XML into pools, lanes and elements."""
         self.pools: list[Pool] = []
         # Cross-pool index: element_id -> (Pool, PoolElement). Used for O(1) starting-element
         # lookups that must search across all pools (e.g. find_next_task / find_next_gateway).
@@ -30,6 +31,7 @@ class Bpmn:
         return out
 
     def __parse_xml(self, xml_string: str):
+        """Parse raw BPMN XML and populate pools, elements, flows and lanes."""
         root = ElementTree.fromstring(xml_string)
 
         namespace = {"bpmn": "http://www.omg.org/spec/BPMN/20100524/MODEL"}
@@ -106,6 +108,7 @@ class Bpmn:
                 self._elements_by_id[element.id] = (parsed_pool, element)
 
     def find_task(self, task_label: str, match_threshold: float = 0.6) -> tuple[PoolElement, float] | None:
+        """Find the first BPMN element whose label semantically matches task_label above the threshold."""
         # Collect all elements with labels
         elements_with_labels = []
         labels = []
@@ -583,6 +586,7 @@ class Bpmn:
         return -1, None, 0.0
 
     def extract_tasks(self) -> list[str]:
+        """Return labels of all task elements across all pools."""
         tasks: list[str] = []
         for pool in self.pools:
             for element in pool.elements:

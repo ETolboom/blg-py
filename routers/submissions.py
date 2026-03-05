@@ -9,11 +9,13 @@ router = APIRouter()
 
 @router.get("/submissions")
 async def get_submissions_list(service: SubmissionService = Depends(get_submission_service)) -> list[dict]:
+    """Return a list of all uploaded student submissions."""
     return service.list_submissions()
 
 
 @router.get("/submissions/export")
 async def export_submission(filename: str, service: SubmissionService = Depends(get_submission_service)) -> Response:
+    """Export grading results for a single submission as an Excel file."""
     content = service.export_submission(filename)
     return Response(
         content=content,
@@ -26,6 +28,7 @@ async def export_submission(filename: str, service: SubmissionService = Depends(
 
 @router.get("/submissions/export/all")
 async def export_all_submission(service: SubmissionService = Depends(get_submission_service)) -> Response:
+    """Export grading results for all submissions as a single Excel workbook."""
     content = service.export_all_submissions()
     return Response(
         content=content,
@@ -42,10 +45,12 @@ async def upload_submissions(files: list[UploadFile], service: SubmissionService
 
 @router.get("/submissions/{filename}")
 async def get_submission(filename: str, service: SubmissionService = Depends(get_submission_service)) -> Response:
+    """Return the raw BPMN XML for a specific submission."""
     xml = service.get_submission_xml(filename)
     return Response(content=xml, media_type="application/xml")
 
 
 @router.patch("/submissions/{filename}")
 async def update_submission(filename: str, criteria: list[SubmissionCriterionResult], service: SubmissionService = Depends(get_submission_service)) -> None:
+    """Manually update criterion results for a specific submission."""
     service.update_submission_criteria(filename, criteria)

@@ -301,6 +301,7 @@ class DivergencePoint:
 
 
 def _find_start_node(nodes: list[GraphNode], edges: list[Edge]) -> GraphNode | None:
+    """Return the unique workflow node with no incoming edges, or None if none exists."""
     # Collect all node IDs that are targets (have incoming edges)
     target_node_ids = {edge.target for edge in edges}
 
@@ -318,6 +319,7 @@ def _find_start_node(nodes: list[GraphNode], edges: list[Edge]) -> GraphNode | N
 
 
 def _extract_connector_nodes(nodes: list[GraphNode]) -> list[GraphNode]:
+    """Filter and return all AND/XOR connector nodes from a node list."""
     connector_types = ["andConnector", "xorConnector"]
     connector_nodes = [node for node in nodes if node.type in connector_types]
     return connector_nodes
@@ -332,6 +334,7 @@ class BehavioralRuleCheck(Check):
     input_scheme: ClassVar[list[CheckFormInput]] = []
 
     def is_applicable(self) -> bool:
+        """Return False — behavioral checks are not surfaced during onboarding."""
         # Should not appear during onboarding
         return False
 
@@ -814,6 +817,7 @@ class BehavioralRuleCheck(Check):
         )
 
     def analyze(self, inputs: list[CheckFormInput] | None = None) -> CheckResult:
+        """Not supported — use check_behavior() instead."""
         raise Exception("Not applicable to behavioral rule check")
 
 
@@ -821,6 +825,7 @@ class BehavioralGroupEvaluator:
     """Evaluates template groups with XOR/AND conditions and MAX scoring"""
 
     def __init__(self, model_xml: str, rule_manager):
+        """Initialize evaluator with the BPMN XML and a rule manager for loading rules."""
         self.model_xml = model_xml
         self.rule_manager = rule_manager
 

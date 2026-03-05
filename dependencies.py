@@ -9,14 +9,17 @@ from services.submissions import SubmissionService
 
 
 def get_check_registry(request: Request) -> CheckRegistry:
+    """Return the application-level CheckRegistry."""
     return request.app.state.check_registry
 
 
 def get_submission_service(request: Request) -> SubmissionService:
+    """Return the application-level SubmissionService."""
     return request.app.state.submission_service
 
 
 def get_rule_manager(request: Request) -> BehavioralRuleManager:
+    """Return the application-level BehavioralRuleManager."""
     return request.app.state.rule_manager
 
 

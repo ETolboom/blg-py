@@ -11,12 +11,14 @@ from rubric import Rubric, RubricCriterion, SubmissionCriterionResult, Submissio
 
 class SubmissionService:
     def __init__(self, base_path: str, rubric: Rubric | None):
+        """Initialize the service with the data directory path and the current rubric."""
         self.base_path = base_path
         self.submissions_path = os.path.join(base_path, "submissions")
         self.rubric = rubric
         self.current_submission: str | None = None
 
     def list_submissions(self) -> list[dict]:
+        """Return filename and display name for every .bpmn file in the submissions directory."""
         os.makedirs(self.submissions_path, exist_ok=True)
         return [
             {"filename": f, "name": f.replace(".bpmn", "")}
@@ -25,6 +27,7 @@ class SubmissionService:
         ]
 
     def get_submission_xml(self, filename: str) -> str:
+        """Return raw BPMN XML for a submission; pass "Reference" to get the reference model."""
         if filename == "Reference":
             if self.rubric and self.rubric.assignment and self.rubric.assignment.reference_xml:
                 return self.rubric.assignment.reference_xml
@@ -118,9 +121,11 @@ class SubmissionService:
             os.remove(path)
 
     def get_submission_rubric(self, filename: str) -> Rubric:
+        """Return the composed rubric for the given submission filename."""
         return self.compose_rubric(filename)
 
     async def upload_submissions(self, files: list[UploadFile]) -> list[dict]:
+        """Save uploaded BPMN files to the submissions directory and return their metadata."""
         os.makedirs(self.submissions_path, exist_ok=True)
 
         uploaded = []
@@ -141,6 +146,7 @@ class SubmissionService:
         return uploaded
 
     def update_submission_criteria(self, filename: str, criteria: list[SubmissionCriterionResult]) -> None:
+        """Merge updated criterion results into the stored submission result file."""
         path = os.path.join(self.submissions_path, filename + ".json")
         if not os.path.exists(path):
             raise HTTPException(status_code=404, detail="Submission not found")
@@ -161,10 +167,12 @@ class SubmissionService:
             f.write(result.model_dump_json())
 
     def export_submission(self, filename: str) -> bytes:
+        """Export the graded rubric for a single submission as Excel bytes."""
         parsed_rubric = self.compose_rubric(filename)
         return parsed_rubric.to_excel(filename)
 
     def export_all_submissions(self) -> bytes:
+        """Export graded rubrics for all analyzed submissions as a multi-sheet Excel workbook."""
         json_files = [f for f in os.listdir(self.submissions_path) if f.endswith(".json")]
 
         excel_buffer = io.BytesIO()
@@ -183,4 +191,5 @@ class SubmissionService:
         return excel_buffer.getvalue()
 
     def select_submission(self, filename: str | None) -> None:
+        """Set the currently active submission filename."""
         self.current_submission = filename

@@ -17,6 +17,7 @@ router = APIRouter()
 
 @router.get("/rubric")
 async def get_current_rubric(request: Request) -> Rubric:
+    """Return the currently loaded rubric."""
     rubric = request.app.state.rubric
     if rubric is None:
         raise HTTPException(status_code=404, detail="Rubric not found")
@@ -25,6 +26,7 @@ async def get_current_rubric(request: Request) -> Rubric:
 
 @router.post("/rubric")
 async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric, request: Request, registry: CheckRegistry = Depends(get_check_registry)) -> Rubric:
+    """Create and persist a new rubric from an onboarding payload, running initial check analysis."""
     base_path = request.app.state.base_path
 
     ref_xml = (
@@ -73,6 +75,7 @@ async def handle_onboarding_rubric(onboarding_rubric: OnboardingRubric, request:
 
 @router.post("/rubric/criteria/behavioral/analyze")
 def analyze_behavioral_criteria(data: WorkflowData, request: Request) -> CheckResult:
+    """Run a behavioral rule check against the reference BPMN and return the result."""
     rubric = request.app.state.rubric
 
     try:
@@ -84,6 +87,7 @@ def analyze_behavioral_criteria(data: WorkflowData, request: Request) -> CheckRe
 
 @router.post("/rubric/criteria/behavioral/{behavioral_id}")
 async def add_behavioral_criteria(behavioral_id: str, inputs: BehavioralRule, request: Request, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> Rubric:
+    """Save a behavioral rule and add (or replace) it as a criterion in the rubric."""
     rubric = request.app.state.rubric
 
     try:
@@ -147,6 +151,7 @@ async def add_behavioral_criteria(behavioral_id: str, inputs: BehavioralRule, re
 async def update_criteria(
     algorithm_id: str, inputs: list[CheckFormInput], request: Request, registry: CheckRegistry = Depends(get_check_registry),
 ) -> Rubric:
+    """Run a standard check with the provided inputs and upsert the result as a rubric criterion."""
     rubric = request.app.state.rubric
 
     try:
@@ -262,6 +267,7 @@ async def delete_supplement(request: Request) -> dict:
 
 @router.delete("/rubric/criteria/{criterion_id}")
 async def delete_rubric_criterion(criterion_id: str, request: Request, rule_manager: BehavioralRuleManager = Depends(get_rule_manager)) -> dict:
+    """Delete a rubric criterion; for group criteria, restores the individual templates first."""
     rubric = request.app.state.rubric
 
     try:
@@ -302,6 +308,7 @@ async def delete_rubric_criterion(criterion_id: str, request: Request, rule_mana
 
 
 async def _unmerge_and_delete_group(criterion_id: str, index: int, rubric: Rubric, request: Request, rule_manager: BehavioralRuleManager) -> dict:
+    """Remove a group criterion and restore its constituent template criteria in the rubric."""
     # Extract group_id (remove "group:" prefix)
     group_id = criterion_id[6:]
 

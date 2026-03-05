@@ -19,6 +19,7 @@ from services.submissions import SubmissionService
 logger = logging.getLogger(__name__)
 
 def get_rubric_from_disk(base_path: str) -> Rubric | None:
+    """Load and return a Rubric from disk, or None if not found or invalid."""
     if os.path.exists(os.path.join(base_path, "rubric.json")):
         try:
             with open(os.path.join(base_path, "rubric.json")) as file:
@@ -49,6 +50,7 @@ def get_rubric_from_disk(base_path: str) -> Rubric | None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Initialize app state (registry, rubric, rule manager, submission service) on startup."""
     base_path = app.state.base_path
 
     # Load checks during startup
